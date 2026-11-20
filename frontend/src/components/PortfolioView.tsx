@@ -1,6 +1,5 @@
 import React, { useMemo, useState } from 'react';
 import { Plus, ShieldAlert, Trash2 } from 'lucide-react';
-import { MOCK_TW_STOCKS } from '../data/mockTwStocks';
 import { evaluateCyclicalRating } from '../engine/cyclicalScoring';
 import { evaluateFinancialRating } from '../engine/financialScoring';
 import { evaluateRating } from '../engine/ratingAndRegime';
@@ -8,6 +7,11 @@ import { rankBatchWithZScore } from '../engine/scoringBatchZ';
 import { evaluateStageZero } from '../engine/stageZero';
 import { adviseHoldingExit } from '../engine/tradeAdvisor';
 import type { ValuationProfile } from '../engine/types';
+import {
+  createEmptyCyclicalMetrics,
+  createEmptyFinancialMetrics,
+  createEmptyStageZeroInput,
+} from '../services/staticDataService';
 import { useTwQuantStore } from '../store/useTwQuantStore';
 import {
   formatTwd,
@@ -84,12 +88,13 @@ export const PortfolioView: React.FC = () => {
 
   const handleAdd = (e: React.FormEvent) => {
     e.preventDefault();
-    const base = MOCK_TW_STOCKS[0];
-    const finBase = MOCK_TW_STOCKS[8].financialMetrics!;
-    const sz = evaluateStageZero(
-      { ...base.stageZeroInput, price: newPrice },
-      newProfile
-    );
+    const cleanSym = newSym.trim().toUpperCase();
+    const match = universe.find((u) => u.symbol === cleanSym);
+    const szInput = match ? { ...match.stageZeroInput, price: newPrice } : { ...createEmptyStageZeroInput(), price: newPrice };
+    const cycMetrics = match ? match.cyclicalMetrics : createEmptyCyclicalMetrics();
+    const finMetrics = match?.financialMetrics ?? createEmptyFinancialMetrics();
+
+    const sz = evaluateStageZero(szInput, newProfile);
     const bd = { sQ: newQ, sV: newV, sM: newM };
     const rating = evaluateRating({ breakdown: bd, regime, stageZero: sz });
     const isCyc =
@@ -100,28 +105,28 @@ export const PortfolioView: React.FC = () => {
           profile: newProfile,
           regime,
           stageZero: sz,
-          metrics: base.cyclicalMetrics,
+          metrics: cycMetrics,
           price: newPrice,
-          ma120: newPrice * 0.94,
-          ma200: newPrice * 0.9,
-          rev3mCumYoYPct: 12,
-          rev12mCumYoYPct: 8,
+          ma120: match?.ma120 ?? newPrice * 0.94,
+          ma200: match?.ma200 ?? newPrice * 0.9,
+          rev3mCumYoYPct: match?.rev3mCumYoYPct ?? 0,
+          rev12mCumYoYPct: match?.rev12mCumYoYPct ?? 0,
         })
       : undefined;
     const finRating = isFin
       ? evaluateFinancialRating({
           profile: newProfile,
           regime,
-          commonStageZeroInput: { ...base.stageZeroInput, price: newPrice },
-          metrics: finBase,
+          commonStageZeroInput: szInput,
+          metrics: finMetrics,
           price: newPrice,
-          ma200: newPrice * 0.9,
+          ma200: match?.ma200 ?? newPrice * 0.9,
         })
       : undefined;
 
     addHolding({
-      id: `HOLD-TW-${newSym}-${Date.now()}`,
-      symbol: newSym.trim().toUpperCase(),
+      id: `HOLD-TW-${cleanSym}-${Date.now()}`,
+      symbol: cleanSym,
       name: newName.trim(),
       sector: newSector.trim(),
       valuationProfile: newProfile,
@@ -138,9 +143,9 @@ export const PortfolioView: React.FC = () => {
       stopDrawdownThresholdPct: 15,
       currentRating: rating,
       currentBreakdown: bd,
-      cyclicalMetrics: base.cyclicalMetrics,
+      cyclicalMetrics: cycMetrics,
       cyclicalRating: cycRating,
-      financialMetrics: isFin ? finBase : undefined,
+      financialMetrics: isFin ? finMetrics : undefined,
       financialRating: finRating,
     });
     setShowAddForm(false);

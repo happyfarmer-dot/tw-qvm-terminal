@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MOCK_TW_HOLDINGS, MOCK_TW_STOCKS } from '../../data/mockTwStocks';
+import { MOCK_TW_HOLDINGS, MOCK_TW_STOCKS } from './fixtures/testTwStocks';
 import {
   computeCyclicalFinalScore,
   evaluateCyclicalRating,

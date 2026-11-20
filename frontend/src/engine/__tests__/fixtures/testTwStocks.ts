@@ -1,7 +1,7 @@
-import { evaluateCyclicalRating } from '../engine/cyclicalScoring';
-import { evaluateFinancialRating } from '../engine/financialScoring';
-import { evaluateRating } from '../engine/ratingAndRegime';
-import { evaluateStageZero } from '../engine/stageZero';
+import { evaluateCyclicalRating } from '../../cyclicalScoring';
+import { evaluateFinancialRating } from '../../financialScoring';
+import { evaluateRating } from '../../ratingAndRegime';
+import { evaluateStageZero } from '../../stageZero';
 import type {
   BenchmarkRegimeInput,
   CyclicalMetrics,
@@ -11,7 +11,7 @@ import type {
   StageZeroInput,
   TwStockCandidate,
   ValuationProfile,
-} from '../engine/types';
+} from '../../types';
 
 export const DEFAULT_TW_BENCHMARK: BenchmarkRegimeInput = {
   indexClose: 22680,

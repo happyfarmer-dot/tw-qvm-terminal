@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Activity,
   Briefcase,
@@ -18,15 +18,19 @@ import { useTwQuantStore, type NavTab } from './store/useTwQuantStore';
 
 const NAV_ITEMS: { id: NavTab; label: string; sub: string; icon: React.ReactNode }[] = [
   { id: 'dashboard', label: '總覽儀表板', sub: 'TW Dashboard', icon: <LayoutDashboard className="w-4 h-4" /> },
-  { id: 'scorecard', label: '單股健檢與計分卡', sub: 'QVM / Cyclical', icon: <ClipboardCheck className="w-4 h-4" /> },
+  { id: 'scorecard', label: '單股健檢與計分卡', sub: 'QVM / Cyclical / Fin', icon: <ClipboardCheck className="w-4 h-4" /> },
   { id: 'screener', label: '批次篩選 Z-Score', sub: 'Peer Ranking', icon: <Filter className="w-4 h-4" /> },
   { id: 'portfolio', label: '持倉監控與出場台', sub: 'P0–P4 / P1-C', icon: <Briefcase className="w-4 h-4" /> },
   { id: 'sizer', label: '反波動率倉位配置', sub: '張／零股配置', icon: <PieChart className="w-4 h-4" /> },
 ];
 
 export function App() {
-  const { activeTab, setActiveTab } = useTwQuantStore();
+  const { activeTab, setActiveTab, loadStaticData } = useTwQuantStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  useEffect(() => {
+    void loadStaticData();
+  }, [loadStaticData]);
 
   return (
     <div className="min-h-screen bg-[#090d16] text-slate-100 flex">

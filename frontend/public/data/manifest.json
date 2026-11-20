@@ -1,0 +1,28 @@
+{
+  "version": 1,
+  "status": "awaiting_first_run",
+  "updatedAtTaipei": "尚未執行首次排程",
+  "updatedAtUtc": "",
+  "regime": {
+    "regime": "NORMAL",
+    "indexSymbol": "TAIEX",
+    "indexClose": null,
+    "ma200": null,
+    "drawdown20dPct": null,
+    "annualizedVol20dPct": null,
+    "reasons": [
+      "尚未執行 GitHub Actions「Update Real TW Stock Data」，請至 GitHub Actions 手動觸發首次真實數據抓取。"
+    ]
+  },
+  "stats": {
+    "totalWatchlist": 79,
+    "successCount": 0,
+    "failedCount": 0,
+    "skippedDueToQuota": 0,
+    "cacheHits": 0,
+    "finmindFetched": 0,
+    "failedSymbols": [],
+    "finmindQuotaRemaining": null,
+    "finmindQuotaLimit": null
+  }
+}

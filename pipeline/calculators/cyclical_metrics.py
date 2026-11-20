@@ -6,7 +6,7 @@ from typing import Any, Literal, Optional
 import numpy as np
 import pandas as pd
 
-from app.calculators.financial_ratios import extract_annual_snapshots, safe_div
+from pipeline.calculators.financial_ratios import extract_annual_snapshots, safe_div
 
 
 ValuationProfile = Literal[

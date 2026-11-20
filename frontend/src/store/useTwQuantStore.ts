@@ -1,12 +1,4 @@
 import { create } from 'zustand';
-import {
-  DEFAULT_FINANCIAL_METRICS,
-  DEFAULT_MANUAL_SCORECARD,
-  DEFAULT_STAGE_ZERO_INPUT,
-  DEFAULT_TW_BENCHMARK,
-  MOCK_TW_HOLDINGS,
-  MOCK_TW_STOCKS,
-} from '../data/mockTwStocks';
 import { evaluateCyclicalRating } from '../engine/cyclicalScoring';
 import { evaluateFinancialRating } from '../engine/financialScoring';
 import { evaluateRating } from '../engine/ratingAndRegime';
@@ -26,11 +18,19 @@ import type {
   ValuationProfile,
 } from '../engine/types';
 import {
+  createDefaultBenchmark,
+  createEmptyCyclicalMetrics,
+  createEmptyFinancialMetrics,
+  createEmptyManualScorecard,
+  createEmptyStageZeroInput,
+  fetchStaticManifest,
+  fetchStaticStocksBundle,
   mapSnapshotToCandidate,
-  TwDataProvider,
-  type BackendStockSnapshot,
-  type DataSourceMode,
-} from '../services/dataProvider';
+  mergeRegulatoryIntoSnapshot,
+  type ManifestData,
+  type RegulatoryOverridePayload,
+  type StaticStockSnapshot,
+} from '../services/staticDataService';
 import {
   loadPersistedTwState,
   savePersistedTwState,
@@ -41,12 +41,16 @@ export type NavTab = 'dashboard' | 'scorecard' | 'screener' | 'portfolio' | 'siz
 
 interface TwQuantState {
   activeTab: NavTab;
-  dataSourceMode: DataSourceMode;
-  backendUrl: string;
+  manifest: ManifestData | null;
+  rawSnapshots: StaticStockSnapshot[];
+  dataLoading: boolean;
+  dataError: string | null;
+
   regime: MarketRegime;
   benchmark: BenchmarkRegimeInput;
   universe: TwStockCandidate[];
   holdings: HoldingPosition[];
+  regulatoryOverrides: Record<string, RegulatoryOverridePayload>;
   selectedSizingIds: string[];
   sizingConfig: SizingConfig;
   frictionConfig: TwFrictionConfig;
@@ -74,14 +78,14 @@ interface TwQuantState {
 
   // Actions
   setActiveTab: (tab: NavTab) => void;
-  setDataSourceMode: (mode: DataSourceMode) => void;
-  setBackendUrl: (url: string) => void;
+  loadStaticData: () => Promise<void>;
   setRegime: (regime: MarketRegime) => void;
   updateBenchmark: (patch: Partial<BenchmarkRegimeInput>) => void;
   upsertUniverseStocks: (stocks: TwStockCandidate[]) => void;
   addHolding: (holding: HoldingPosition) => void;
   updateHolding: (id: string, patch: Partial<HoldingPosition>) => void;
   removeHolding: (id: string) => void;
+  saveLocalRegulatoryOverride: (symbol: string, payload: RegulatoryOverridePayload) => void;
   toggleSizingSelection: (id: string) => void;
   setSelectedSizingIds: (ids: string[]) => void;
   updateSizingConfig: (patch: Partial<SizingConfig>) => void;
@@ -104,24 +108,19 @@ interface TwQuantState {
   updateManualFinancialMetrics: (patch: Partial<FinancialSectorMetrics>) => void;
   setJustifiedPbSensitivity: (patch: { kePct?: number; payoutPct?: number | null }) => void;
   loadCandidateIntoScorecard: (stock: TwStockCandidate, profileOverride?: ValuationProfile) => void;
-  loadBackendSnapshotIntoScorecard: (snap: BackendStockSnapshot) => void;
-  loadSnapshot: (snapshot: PersistedTwState) => void;
-  resetToDefaults: () => void;
+  loadSnapshot: (snapshot: Partial<PersistedTwState>) => void;
+  resetPersonalData: () => void;
   getPersistedSnapshot: () => PersistedTwState;
-  getProvider: () => TwDataProvider;
 }
 
 const persisted = loadPersistedTwState();
 
 function persist(s: TwQuantState): void {
   savePersistedTwState({
-    version: 1,
-    dataSourceMode: s.dataSourceMode,
-    backendUrl: s.backendUrl,
+    version: 2,
     regime: s.regime,
-    benchmark: s.benchmark,
-    universe: s.universe,
     holdings: s.holdings,
+    regulatoryOverrides: s.regulatoryOverrides,
     selectedSizingIds: s.selectedSizingIds,
     sizingConfig: s.sizingConfig,
     frictionConfig: s.frictionConfig,
@@ -152,7 +151,7 @@ function buildManualFromCandidate(stock: TwStockCandidate): Partial<TwQuantState
   const finMetrics = stock.financialMetrics
     ? { ...stock.financialMetrics }
     : {
-        ...DEFAULT_FINANCIAL_METRICS,
+        ...createEmptyFinancialMetrics(),
         currentPB: stock.cyclicalMetrics.currentPB,
         pbPercentile5to7Y: stock.cyclicalMetrics.pbPercentile5to7Y,
         pbBand: { ...stock.cyclicalMetrics.pbBand },
@@ -161,8 +160,7 @@ function buildManualFromCandidate(stock: TwStockCandidate): Partial<TwQuantState
         netRevenue12mYoY: stock.rev12mCumYoYPct,
         biasFromMa200Pct: stock.cyclicalMetrics.biasFromMa200Pct,
       };
-  const keDefault =
-    stock.recommendedProfile === 'financial_life_fhc' ? 9.5 : 8.0;
+  const keDefault = stock.recommendedProfile === 'financial_life_fhc' ? 9.5 : 8.0;
 
   return {
     manualSymbol: stock.symbol,
@@ -173,7 +171,7 @@ function buildManualFromCandidate(stock: TwStockCandidate): Partial<TwQuantState
     manualMa200: stock.ma200,
     manualRev3mYoY: stock.rev3mCumYoYPct,
     manualRev12mYoY: stock.rev12mCumYoYPct,
-    manualTrailingPe: stock.trailingPe,
+    manualTrailingPe: stock.trailingPe > 0 ? stock.trailingPe : null,
     manualForwardEps: null,
     manualProfile: stock.recommendedProfile,
     recommendedProfile: stock.recommendedProfile,
@@ -198,10 +196,10 @@ function buildManualFromCandidate(stock: TwStockCandidate): Partial<TwQuantState
         higherGrossMargin: stock.piotroskiRaw >= 8,
         higherAssetTurnover: stock.piotroskiRaw >= 9,
       },
-      v1EvMultipleScore: stock.evToEbitda <= 12 ? 14 : stock.evToEbitda <= 18 ? 10 : 3,
+      v1EvMultipleScore: stock.evToEbitda > 0 && stock.evToEbitda <= 12 ? 14 : stock.evToEbitda <= 18 ? 10 : 3,
       v2FcfEvScore: stock.fcfYieldPct >= 6 ? 12 : stock.fcfYieldPct >= 3.5 ? 8 : 2,
       v3DivAndPeScore:
-        stock.consecutive5yDividend && (stock.forwardPe ?? stock.trailingPe) <= 20
+        stock.consecutive5yDividend && (stock.forwardPe ?? stock.trailingPe) > 0 && (stock.forwardPe ?? stock.trailingPe) <= 20
           ? 8
           : stock.consecutive5yDividend
             ? 5
@@ -214,22 +212,29 @@ function buildManualFromCandidate(stock: TwStockCandidate): Partial<TwQuantState
   };
 }
 
+function buildUniverseFromSnapshots(
+  snapshots: StaticStockSnapshot[],
+  overrides: Record<string, RegulatoryOverridePayload>
+): TwStockCandidate[] {
+  return snapshots.map((snap) => {
+    const merged = mergeRegulatoryIntoSnapshot(snap, overrides[snap.symbol]);
+    return mapSnapshotToCandidate(merged);
+  });
+}
+
 export const useTwQuantStore = create<TwQuantState>((set, get) => ({
   activeTab: 'dashboard',
-  dataSourceMode: persisted?.dataSourceMode ?? 'mock',
-  backendUrl: persisted?.backendUrl ?? 'http://localhost:8000',
+  manifest: null,
+  rawSnapshots: [],
+  dataLoading: false,
+  dataError: null,
+
   regime: persisted?.regime ?? 'NORMAL',
-  benchmark: persisted?.benchmark ?? DEFAULT_TW_BENCHMARK,
-  universe: persisted?.universe ?? MOCK_TW_STOCKS,
-  holdings: persisted?.holdings ?? MOCK_TW_HOLDINGS,
-  selectedSizingIds: persisted?.selectedSizingIds ?? [
-    'TW-2330',
-    'TW-2308',
-    'TW-2382',
-    'TW-2345',
-    'TW-3131',
-    'TW-2886',
-  ],
+  benchmark: createDefaultBenchmark(),
+  universe: [],
+  holdings: persisted?.holdings ?? [],
+  regulatoryOverrides: persisted?.regulatoryOverrides ?? {},
+  selectedSizingIds: persisted?.selectedSizingIds ?? [],
   sizingConfig: persisted?.sizingConfig ?? {
     totalActiveCapital: 3_000_000,
     portfolioMode: 'SATELLITE',
@@ -243,38 +248,97 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
     applyMinFee20: true,
     slippageRoundTripPct: 0.15,
   },
-  manualSymbol: persisted?.manualSymbol ?? MOCK_TW_STOCKS[0].symbol,
-  manualName: persisted?.manualName ?? MOCK_TW_STOCKS[0].name,
-  manualSector: persisted?.manualSector ?? MOCK_TW_STOCKS[0].sector,
-  manualPrice: persisted?.manualPrice ?? MOCK_TW_STOCKS[0].price,
-  manualMa120: persisted?.manualMa120 ?? MOCK_TW_STOCKS[0].ma120,
-  manualMa200: persisted?.manualMa200 ?? MOCK_TW_STOCKS[0].ma200,
-  manualRev3mYoY: persisted?.manualRev3mYoY ?? MOCK_TW_STOCKS[0].rev3mCumYoYPct,
-  manualRev12mYoY: persisted?.manualRev12mYoY ?? MOCK_TW_STOCKS[0].rev12mCumYoYPct,
-  manualTrailingPe: persisted?.manualTrailingPe ?? MOCK_TW_STOCKS[0].trailingPe,
+
+  manualSymbol: persisted?.manualSymbol ?? '',
+  manualName: persisted?.manualName ?? '',
+  manualSector: persisted?.manualSector ?? '',
+  manualPrice: persisted?.manualPrice ?? 0,
+  manualMa120: persisted?.manualMa120 ?? 0,
+  manualMa200: persisted?.manualMa200 ?? 0,
+  manualRev3mYoY: persisted?.manualRev3mYoY ?? 0,
+  manualRev12mYoY: persisted?.manualRev12mYoY ?? 0,
+  manualTrailingPe: persisted?.manualTrailingPe ?? null,
   manualForwardEps: persisted?.manualForwardEps ?? null,
   manualProfile: persisted?.manualProfile ?? 'standard',
   recommendedProfile: persisted?.recommendedProfile ?? 'standard',
-  manualScorecard: persisted?.manualScorecard ?? DEFAULT_MANUAL_SCORECARD,
-  manualStageZero: persisted?.manualStageZero ?? DEFAULT_STAGE_ZERO_INPUT,
-  manualCyclicalMetrics:
-    persisted?.manualCyclicalMetrics ?? MOCK_TW_STOCKS[0].cyclicalMetrics,
-  manualFinancialMetrics:
-    persisted?.manualFinancialMetrics ?? DEFAULT_FINANCIAL_METRICS,
+  manualScorecard: persisted?.manualScorecard ?? createEmptyManualScorecard(),
+  manualStageZero: persisted?.manualStageZero ?? createEmptyStageZeroInput(),
+  manualCyclicalMetrics: persisted?.manualCyclicalMetrics ?? createEmptyCyclicalMetrics(),
+  manualFinancialMetrics: persisted?.manualFinancialMetrics ?? createEmptyFinancialMetrics(),
   customKePct: persisted?.customKePct ?? 8.0,
-  customPayoutPct: persisted?.customPayoutPct ?? 62.0,
+  customPayoutPct: persisted?.customPayoutPct ?? null,
   manualDataQuality: persisted?.manualDataQuality,
 
   setActiveTab: (activeTab) => set({ activeTab }),
 
-  setDataSourceMode: (dataSourceMode) => {
-    set({ dataSourceMode });
-    persist(get());
-  },
+  loadStaticData: async () => {
+    set({ dataLoading: true, dataError: null });
+    try {
+      const [manifest, bundle] = await Promise.all([
+        fetchStaticManifest(),
+        fetchStaticStocksBundle(),
+      ]);
 
-  setBackendUrl: (backendUrl) => {
-    set({ backendUrl });
-    persist(get());
+      const state = get();
+      const universe = buildUniverseFromSnapshots(bundle.stocks, state.regulatoryOverrides);
+
+      const nextBenchmark: BenchmarkRegimeInput = {
+        indexClose: manifest.regime.indexClose ?? 0,
+        ma200: manifest.regime.ma200 ?? 0,
+        drawdown20dPct: manifest.regime.drawdown20dPct ?? 0,
+        annualizedVol20dPct: manifest.regime.annualizedVol20dPct ?? 0,
+      };
+
+      const nextRegime: MarketRegime =
+        manifest.status !== 'awaiting_first_run' ? manifest.regime.regime : state.regime;
+
+      let scorecardPatch: Partial<TwQuantState> = {};
+      if (universe.length > 0) {
+        const currentMatch = universe.find((u) => u.symbol === state.manualSymbol);
+        if (currentMatch) {
+          scorecardPatch = buildManualFromCandidate(currentMatch);
+        } else if (!state.manualSymbol) {
+          const defaultStock = universe.find((u) => u.symbol === '2330') ?? universe[0];
+          scorecardPatch = buildManualFromCandidate(defaultStock);
+        }
+      }
+
+      // 同步持倉之最新收盤價
+      const priceMap = new Map(universe.map((u) => [u.symbol, u]));
+      const updatedHoldings = state.holdings.map((h) => {
+        const match = priceMap.get(h.symbol);
+        if (!match) return h;
+        return {
+          ...h,
+          currentPrice: match.price > 0 ? match.price : h.currentPrice,
+          highestPriceSinceEntry: Math.max(h.highestPriceSinceEntry, match.price),
+          atr20: match.atr20,
+          ma120: match.ma120,
+          ma200: match.ma200,
+          daysBelow200Ma: match.daysBelow200Ma,
+          cyclicalMetrics: match.cyclicalMetrics,
+          financialMetrics: match.financialMetrics,
+        };
+      });
+
+      set({
+        manifest,
+        rawSnapshots: bundle.stocks,
+        universe,
+        benchmark: nextBenchmark,
+        regime: nextRegime,
+        holdings: updatedHoldings,
+        dataLoading: false,
+        dataError: null,
+        ...scorecardPatch,
+      });
+      persist(get());
+    } catch (err) {
+      set({
+        dataLoading: false,
+        dataError: err instanceof Error ? err.message : '載入靜態真實數據失敗',
+      });
+    }
   },
 
   setRegime: (regime) => {
@@ -282,7 +346,7 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
       regime,
       holdings: s.holdings.map((h) => {
         const stockMatch = s.universe.find((u) => u.symbol === h.symbol);
-        const szInput = stockMatch?.stageZeroInput ?? DEFAULT_STAGE_ZERO_INPUT;
+        const szInput = stockMatch?.stageZeroInput ?? createEmptyStageZeroInput();
         const sz = evaluateStageZero(szInput, h.valuationProfile);
         const isCyc =
           h.valuationProfile === 'cyclical_heavy_asset' ||
@@ -340,7 +404,6 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
       incoming.forEach((st) => map.set(st.symbol, st));
       return { universe: Array.from(map.values()) };
     });
-    persist(get());
   },
 
   addHolding: (holding) => {
@@ -382,7 +445,7 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
                 regime: s.regime,
                 commonStageZeroInput:
                   s.universe.find((u) => u.symbol === merged.symbol)?.stageZeroInput ??
-                  DEFAULT_STAGE_ZERO_INPUT,
+                  createEmptyStageZeroInput(),
                 metrics: merged.financialMetrics,
                 price: merged.currentPrice,
                 ma200: merged.ma200,
@@ -402,6 +465,28 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
 
   removeHolding: (id) => {
     set((s) => ({ holdings: s.holdings.filter((h) => h.id !== id) }));
+    persist(get());
+  },
+
+  saveLocalRegulatoryOverride: (symbol, payload) => {
+    const clean = symbol.trim().toUpperCase();
+    set((s) => {
+      const nextOverrides = { ...s.regulatoryOverrides, [clean]: payload };
+      const nextUniverse = buildUniverseFromSnapshots(s.rawSnapshots, nextOverrides);
+      const updatedMatch = nextUniverse.find((u) => u.symbol === clean);
+      const scorecardPatch =
+        updatedMatch && s.manualSymbol === clean
+          ? {
+              manualFinancialMetrics: updatedMatch.financialMetrics ?? s.manualFinancialMetrics,
+              manualDataQuality: updatedMatch.dataQuality,
+            }
+          : {};
+      return {
+        regulatoryOverrides: nextOverrides,
+        universe: nextUniverse,
+        ...scorecardPatch,
+      };
+    });
     persist(get());
   },
 
@@ -501,51 +586,39 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
     persist(get());
   },
 
-  loadBackendSnapshotIntoScorecard: (snap) => {
-    const candidate = mapSnapshotToCandidate(snap);
-    const built = buildManualFromCandidate(candidate);
+  loadSnapshot: (snapshot) => {
     set((s) => {
-      const map = new Map(s.universe.map((u) => [u.symbol, u]));
-      map.set(candidate.symbol, candidate);
+      const nextOverrides = snapshot.regulatoryOverrides ?? s.regulatoryOverrides;
       return {
-        ...built,
-        universe: Array.from(map.values()),
-        manualTrailingPe: snap.ratios.trailingPe,
-        manualDataQuality: snap.dataQuality,
+        ...snapshot,
+        universe: buildUniverseFromSnapshots(s.rawSnapshots, nextOverrides),
       };
     });
     persist(get());
   },
 
-  loadSnapshot: (snapshot) => {
-    set({ ...snapshot });
-    persist(get());
-  },
-
-  resetToDefaults: () => {
-    set({
-      dataSourceMode: 'mock',
-      backendUrl: 'http://localhost:8000',
-      regime: 'NORMAL',
-      benchmark: DEFAULT_TW_BENCHMARK,
-      universe: MOCK_TW_STOCKS,
-      holdings: MOCK_TW_HOLDINGS,
-      selectedSizingIds: ['TW-2330', 'TW-2308', 'TW-2382', 'TW-2345', 'TW-3131', 'TW-2886'],
-      sizingConfig: {
-        totalActiveCapital: 3_000_000,
-        portfolioMode: 'SATELLITE',
-        minWeightPct: 4,
-        maxWeightPct: 22,
-        sectorCapPct: 28,
-        applySectorScaling: true,
-      },
-      frictionConfig: {
-        feeDiscount: 0.6,
-        applyMinFee20: true,
-        slippageRoundTripPct: 0.15,
-      },
-      ...buildManualFromCandidate(MOCK_TW_STOCKS[0]),
-      manualProfile: 'standard',
+  resetPersonalData: () => {
+    set((s) => {
+      const nextUniverse = buildUniverseFromSnapshots(s.rawSnapshots, {});
+      return {
+        holdings: [],
+        regulatoryOverrides: {},
+        selectedSizingIds: [],
+        sizingConfig: {
+          totalActiveCapital: 3_000_000,
+          portfolioMode: 'SATELLITE',
+          minWeightPct: 4,
+          maxWeightPct: 22,
+          sectorCapPct: 28,
+          applySectorScaling: true,
+        },
+        frictionConfig: {
+          feeDiscount: 0.6,
+          applyMinFee20: true,
+          slippageRoundTripPct: 0.15,
+        },
+        universe: nextUniverse,
+      };
     });
     persist(get());
   },
@@ -553,13 +626,10 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
   getPersistedSnapshot: () => {
     const s = get();
     return {
-      version: 1,
-      dataSourceMode: s.dataSourceMode,
-      backendUrl: s.backendUrl,
+      version: 2,
       regime: s.regime,
-      benchmark: s.benchmark,
-      universe: s.universe,
       holdings: s.holdings,
+      regulatoryOverrides: s.regulatoryOverrides,
       selectedSizingIds: s.selectedSizingIds,
       sizingConfig: s.sizingConfig,
       frictionConfig: s.frictionConfig,
@@ -584,6 +654,4 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
       manualDataQuality: s.manualDataQuality,
     };
   },
-
-  getProvider: () => new TwDataProvider(get().backendUrl),
 }));

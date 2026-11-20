@@ -4,7 +4,6 @@ import {
   CheckSquare,
   ChevronDown,
   ChevronRight,
-  CloudDownload,
   Download,
   FileUp,
   Plus,
@@ -18,15 +17,13 @@ import { rankBatchWithZScore } from '../engine/scoringBatchZ';
 import type { BatchRankedStock, Grade } from '../engine/types';
 import {
   generateTwCsvTemplate,
-  mapSnapshotToCandidate,
   parseTwCsvUniverse,
-} from '../services/dataProvider';
+} from '../services/staticDataService';
 import { useTwQuantStore } from '../store/useTwQuantStore';
 import { formatTwd, GradeBadge } from './GradeBadge';
 
 export const ScreenerView: React.FC = () => {
   const {
-    dataSourceMode,
     regime,
     universe,
     selectedSizingIds,
@@ -35,11 +32,9 @@ export const ScreenerView: React.FC = () => {
     loadCandidateIntoScorecard,
     addHolding,
     setActiveTab,
-    getProvider,
   } = useTwQuantStore();
 
-  const [batchSymbolsInput, setBatchSymbolsInput] = useState('2330,2308,2382,2454,2603,3131,2886');
-  const [batchLoading, setBatchLoading] = useState(false);
+  const [profileFilter, setProfileFilter] = useState<'ALL' | 'standard' | 'cyclical' | 'financial'>('ALL');
   const [gradeFilter, setGradeFilter] = useState<Grade | 'ALL'>('ALL');
   const [sectorFilter, setSectorFilter] = useState<string>('ALL');
   const [stageZeroFilter, setStageZeroFilter] = useState<'ALL' | 'PASS' | 'FAIL'>('ALL');
@@ -58,6 +53,21 @@ export const ScreenerView: React.FC = () => {
   const filtered = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return ranked.filter((item) => {
+      if (profileFilter === 'standard' && item.stock.recommendedProfile !== 'standard') return false;
+      if (
+        profileFilter === 'cyclical' &&
+        item.stock.recommendedProfile !== 'cyclical_heavy_asset' &&
+        item.stock.recommendedProfile !== 'cyclical_inventory_order'
+      ) {
+        return false;
+      }
+      if (
+        profileFilter === 'financial' &&
+        item.stock.recommendedProfile !== 'financial_bank' &&
+        item.stock.recommendedProfile !== 'financial_life_fhc'
+      ) {
+        return false;
+      }
       if (gradeFilter !== 'ALL' && item.rating.finalGrade !== gradeFilter) return false;
       if (sectorFilter !== 'ALL' && item.stock.sector !== sectorFilter) return false;
       if (stageZeroFilter === 'PASS' && !item.stageZero.passed) return false;
@@ -72,36 +82,7 @@ export const ScreenerView: React.FC = () => {
       }
       return true;
     });
-  }, [ranked, gradeFilter, sectorFilter, stageZeroFilter, searchQuery]);
-
-  const handleLiveBatchFetch = async () => {
-    const syms = batchSymbolsInput
-      .split(/[,\s]+/)
-      .map((s) => s.trim().toUpperCase())
-      .filter(Boolean)
-      .slice(0, 25);
-    if (syms.length === 0) return;
-
-    setBatchLoading(true);
-    setStatusMsg(null);
-    try {
-      const provider = getProvider();
-      const resp = await provider.fetchBatch(syms, false);
-      const mapped = resp.results.map(mapSnapshotToCandidate);
-      if (mapped.length > 0) upsertUniverseStocks(mapped);
-      setStatusMsg({
-        ok: mapped.length > 0 ? [`成功自 FastAPI 拉取並重算 ${mapped.length} 檔台股`] : [],
-        errors: resp.errors.map((e) => `${e.symbol}: ${e.error}`),
-      });
-    } catch (err) {
-      setStatusMsg({
-        ok: [],
-        errors: [err instanceof Error ? err.message : String(err)],
-      });
-    } finally {
-      setBatchLoading(false);
-    }
-  };
+  }, [ranked, profileFilter, gradeFilter, sectorFilter, stageZeroFilter, searchQuery]);
 
   const handleDownloadCsvTemplate = () => {
     const csv = generateTwCsvTemplate();
@@ -223,29 +204,6 @@ export const ScreenerView: React.FC = () => {
         </div>
       </div>
 
-      {/* Batch Live Fetch Bar */}
-      <div className="p-3.5 rounded-xl bg-[#0f172a] border border-slate-800 flex flex-wrap items-center gap-2.5 text-xs">
-        <span className="font-semibold text-slate-300">自選股批次抓取（上限 25 檔）：</span>
-        <input
-          type="text"
-          value={batchSymbolsInput}
-          onChange={(e) => setBatchSymbolsInput(e.target.value)}
-          className="flex-1 min-w-[220px] px-3 py-1.5 rounded bg-slate-950 border border-slate-700 font-mono text-slate-100"
-        />
-        <button
-          onClick={handleLiveBatchFetch}
-          disabled={batchLoading || dataSourceMode !== 'live'}
-          className="px-3 py-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-semibold flex items-center gap-1.5 disabled:opacity-40"
-          title={dataSourceMode !== 'live' ? '請先於頂部切換至 Live FastAPI 模式' : ''}
-        >
-          <CloudDownload className="w-3.5 h-3.5" />
-          {batchLoading ? '批次抓取中...' : '向後端批次拉取'}
-        </button>
-        {dataSourceMode !== 'live' && (
-          <span className="text-[11px] text-slate-500">（切換頂部為 Live FastAPI 即可連線抓取）</span>
-        )}
-      </div>
-
       {statusMsg && (
         <div className="p-3 rounded-xl bg-slate-900 border border-slate-700 text-xs space-y-1">
           {statusMsg.ok.map((m, i) => (
@@ -269,6 +227,18 @@ export const ScreenerView: React.FC = () => {
             className="w-full pl-8 pr-3 py-1.5 rounded bg-slate-950 border border-slate-700 text-slate-100"
           />
         </div>
+        <select
+          value={profileFilter}
+          onChange={(e) =>
+            setProfileFilter(e.target.value as 'ALL' | 'standard' | 'cyclical' | 'financial')
+          }
+          className="px-2.5 py-1.5 rounded bg-slate-950 border border-slate-700"
+        >
+          <option value="ALL">全部模型 (標準/循環/金融)</option>
+          <option value="standard">標準非金融 (QVM)</option>
+          <option value="cyclical">強景氣循環 (Cyclical-QVM)</option>
+          <option value="financial">銀行與金控 (Fin-QVM)</option>
+        </select>
         <select
           value={gradeFilter}
           onChange={(e) => setGradeFilter(e.target.value as Grade | 'ALL')}

@@ -1,5 +1,4 @@
 import type {
-  BenchmarkRegimeInput,
   CyclicalMetrics,
   DataQuality,
   FinancialSectorMetrics,
@@ -9,21 +8,17 @@ import type {
   SizingConfig,
   StageZeroInput,
   TwFrictionConfig,
-  TwStockCandidate,
   ValuationProfile,
 } from '../engine/types';
-import type { DataSourceMode } from './dataProvider';
+import type { RegulatoryOverridePayload } from './staticDataService';
 
-export const STORAGE_KEY = 'tw_qvm_quant_terminal_v1';
+export const STORAGE_KEY = 'tw_qvm_quant_terminal_v2';
 
 export interface PersistedTwState {
   version: number;
-  dataSourceMode: DataSourceMode;
-  backendUrl: string;
   regime: MarketRegime;
-  benchmark: BenchmarkRegimeInput;
-  universe: TwStockCandidate[];
   holdings: HoldingPosition[];
+  regulatoryOverrides: Record<string, RegulatoryOverridePayload>;
   selectedSizingIds: string[];
   sizingConfig: SizingConfig;
   frictionConfig: TwFrictionConfig;
@@ -73,7 +68,7 @@ export function exportTwBackupJson(state: PersistedTwState): string {
   return JSON.stringify(
     {
       exportedAt: new Date().toISOString(),
-      app: 'TW-QVM Quant Terminal',
+      app: 'TW-QVM Quant Terminal (Serverless)',
       ...state,
     },
     null,
@@ -81,18 +76,18 @@ export function exportTwBackupJson(state: PersistedTwState): string {
   );
 }
 
-export function parseTwBackupJson(jsonText: string): PersistedTwState | null {
+export function parseTwBackupJson(jsonText: string): Partial<PersistedTwState> | null {
   try {
     const parsed = JSON.parse(jsonText) as Partial<PersistedTwState>;
+    if (!parsed || typeof parsed !== 'object') return null;
+    if (parsed.holdings !== undefined && !Array.isArray(parsed.holdings)) return null;
     if (
-      !parsed ||
-      typeof parsed !== 'object' ||
-      !Array.isArray(parsed.universe) ||
-      !Array.isArray(parsed.holdings)
+      parsed.regulatoryOverrides !== undefined &&
+      (typeof parsed.regulatoryOverrides !== 'object' || parsed.regulatoryOverrides === null)
     ) {
       return null;
     }
-    return parsed as PersistedTwState;
+    return parsed;
   } catch {
     return null;
   }

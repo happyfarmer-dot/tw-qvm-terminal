@@ -1,0 +1,62 @@
+name: Update Real TW Stock Data
+
+on:
+  schedule:
+    # 週一至週五 台灣時間 18:45 (UTC 10:45)
+    - cron: '45 10 * * 1-5'
+  workflow_dispatch:
+    inputs:
+      target_symbols:
+        description: '優先抓取特定台股代號（選填，逗號分隔，如 2330,6669）'
+        required: false
+        default: ''
+        type: string
+      force_refresh:
+        description: '強制重新回補 7 年歷史與財報（忽略本地快取）'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install pipeline dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e ./pipeline
+
+      - name: Run TW-QVM Real Data Pipeline
+        env:
+          FINMIND_API_TOKEN: ${{ secrets.FINMIND_API_TOKEN }}
+          MAX_FINMIND_STOCKS_PER_RUN: '65'
+          TARGET_SYMBOLS: ${{ inputs.target_symbols || '' }}
+          FORCE_REFRESH: ${{ inputs.force_refresh || false }}
+        run: |
+          python -m pipeline.fetch_tw_data
+
+      - name: Commit and Push updated JSON & cache
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add frontend/public/data/manifest.json frontend/public/data/stocks_bundle.json pipeline/cache/
+          if git diff --staged --quiet; then
+            echo "No data changes to commit."
+            exit 0
+          fi
+          git commit -m "chore(data): update real TW stock bundle [skip ci]"
+          git pull --rebase origin main
+          git push origin main

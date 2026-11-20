@@ -2,8 +2,7 @@ import React, { useRef, useState } from 'react';
 import {
   AlertTriangle,
   CalendarClock,
-  Cloud,
-  Database,
+  CheckCircle2,
   Download,
   Menu,
   RefreshCw,
@@ -20,22 +19,21 @@ import { useTwQuantStore } from '../store/useTwQuantStore';
 
 export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onToggleSidebar }) => {
   const {
-    dataSourceMode,
-    backendUrl,
+    manifest,
+    dataLoading,
+    dataError,
     regime,
     benchmark,
-    setDataSourceMode,
-    setBackendUrl,
+    universe,
+    loadStaticData,
     setRegime,
     updateBenchmark,
     getPersistedSnapshot,
     loadSnapshot,
-    resetToDefaults,
-    getProvider,
+    resetPersonalData,
   } = useTwQuantStore();
 
   const [showRegimePanel, setShowRegimePanel] = useState(false);
-  const [liveStatus, setLiveStatus] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -43,39 +41,17 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
   const weights = getRegimeWeights(regime);
   const pit = getNextTwPitReviewDate();
 
-  const handleSyncLiveRegime = async () => {
-    try {
-      setLiveStatus('連線中...');
-      const provider = getProvider();
-      const health = await provider.checkHealth();
-      const reg = await provider.fetchRegime();
-      updateBenchmark({
-        indexClose: reg.indexClose,
-        ma200: reg.ma200,
-        drawdown20dPct: reg.drawdown20dPct,
-        annualizedVol20dPct: reg.annualizedVol20dPct,
-      });
-      setRegime(reg.regime);
-      setDataSourceMode('live');
-      setLiveStatus(
-        `已連線 (${health.finmindTier.toUpperCase()} / 快取 ${health.cacheStats.validEntries} 筆)`
-      );
-    } catch (err) {
-      setLiveStatus(`連線失敗：${err instanceof Error ? err.message : String(err)}`);
-    }
-  };
-
   const handleExportBackup = () => {
     const json = exportTwBackupJson(getPersistedSnapshot());
     const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `tw-qvm-backup-${new Date().toISOString().slice(0, 10)}.json`;
+    a.download = `tw-qvm-personal-backup-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
     URL.revokeObjectURL(url);
-    setFeedback('已匯出 JSON 備份');
-    setTimeout(() => setFeedback(null), 2500);
+    setFeedback('已匯出個人帳本與監理覆寫 JSON');
+    setTimeout(() => setFeedback(null), 3000);
   };
 
   const handleImportBackup = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -86,7 +62,7 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
       const parsed = parseTwBackupJson(String(reader.result ?? ''));
       if (parsed) {
         loadSnapshot(parsed);
-        setFeedback('備份還原成功');
+        setFeedback('個人帳本與監理覆寫還原成功');
       } else {
         setFeedback('JSON 格式錯誤');
       }
@@ -95,6 +71,11 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
     reader.readAsText(file);
     e.target.value = '';
   };
+
+  const taiexText =
+    manifest?.regime.indexClose != null
+      ? `TAIEX ${manifest.regime.indexClose.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+      : 'TAIEX 待同步';
 
   return (
     <div className="sticky top-0 z-30 bg-[#0b111e]/95 backdrop-blur border-b border-slate-800">
@@ -108,29 +89,31 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
             <Menu className="w-4 h-4" />
           </button>
 
-          {/* Mock / Live FastAPI Switch */}
-          <div className="inline-flex rounded-lg bg-slate-900 p-0.5 border border-slate-800">
+          {/* Static Real Data Status Pill */}
+          <div
+            className={`px-2.5 py-1 rounded-lg border text-xs flex items-center gap-1.5 tabular-nums ${
+              dataError
+                ? 'bg-rose-500/15 border-rose-500/40 text-rose-200'
+                : manifest?.status === 'awaiting_first_run'
+                  ? 'bg-amber-500/15 border-amber-500/40 text-amber-200'
+                  : 'bg-emerald-500/15 border-emerald-500/35 text-emerald-200'
+            }`}
+          >
+            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+            <span>
+              {dataLoading
+                ? '載入真實數據中...'
+                : dataError
+                  ? `數據載入異常：${dataError}`
+                  : `真實數據更新：${manifest?.updatedAtTaipei ?? '讀取中'}（${taiexText}｜${universe.length} 檔）`}
+            </span>
             <button
-              onClick={() => setDataSourceMode('mock')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md flex items-center gap-1 transition ${
-                dataSourceMode === 'mock'
-                  ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/40'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
+              onClick={() => void loadStaticData()}
+              disabled={dataLoading}
+              className="ml-1 p-0.5 rounded hover:bg-white/10 transition"
+              title="重新載入最新靜態真實數據"
             >
-              <Database className="w-3.5 h-3.5" />
-              Mock 模擬資料
-            </button>
-            <button
-              onClick={() => setDataSourceMode('live')}
-              className={`px-2.5 py-1 text-xs font-semibold rounded-md flex items-center gap-1 transition ${
-                dataSourceMode === 'live'
-                  ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40'
-                  : 'text-slate-400 hover:text-slate-200'
-              }`}
-            >
-              <Cloud className="w-3.5 h-3.5" />
-              Live FastAPI
+              <RefreshCw className={`w-3 h-3 ${dataLoading ? 'animate-spin' : ''}`} />
             </button>
           </div>
 
@@ -169,7 +152,7 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
             }`}
           >
             <SlidersHorizontal className="w-3.5 h-3.5" />
-            大盤與連線設定
+            大盤體制明細
           </button>
         </div>
 
@@ -183,16 +166,18 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
           <button
             onClick={handleExportBackup}
             className="px-2 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-200 flex items-center gap-1"
+            title="匯出個人持倉帳本與金融監理覆寫 JSON（供跨裝置同步或備份）"
           >
             <Download className="w-3.5 h-3.5" />
-            匯出
+            匯出備份
           </button>
           <button
             onClick={() => fileInputRef.current?.click()}
             className="px-2 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-200 flex items-center gap-1"
+            title="匯入個人持倉與監理覆寫 JSON 備份"
           >
             <Upload className="w-3.5 h-3.5" />
-            還原
+            匯入還原
           </button>
           <input
             ref={fileInputRef}
@@ -202,42 +187,23 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
             className="hidden"
           />
           <button
-            onClick={resetToDefaults}
+            onClick={resetPersonalData}
             className="px-2 py-1 rounded-md bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-slate-400 hover:text-slate-200 flex items-center gap-1"
+            title="清除本機瀏覽器儲存的個人持倉與監理覆寫"
           >
             <RotateCcw className="w-3.5 h-3.5" />
-            重置
+            清除個人資料
           </button>
           {feedback && <span className="text-emerald-300 font-medium">{feedback}</span>}
         </div>
       </div>
 
-      {/* Expandable Regime + Backend Sync Panel */}
+      {/* Expandable TAIEX Regime Panel */}
       {showRegimePanel && (
         <div className="px-4 py-3 bg-slate-900/95 border-t border-slate-800 space-y-2.5 text-xs">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-3">
-              <span className="font-semibold text-cyan-300">FastAPI 後端位址：</span>
-              <input
-                type="text"
-                value={backendUrl}
-                onChange={(e) => setBackendUrl(e.target.value)}
-                className="w-56 px-2.5 py-1 rounded bg-slate-950 border border-slate-700 font-mono text-slate-100"
-              />
-              <button
-                onClick={handleSyncLiveRegime}
-                className="px-2.5 py-1 rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 font-semibold flex items-center gap-1"
-              >
-                <RefreshCw className="w-3.5 h-3.5" />
-                測試連線並同步 TAIEX 體制
-              </button>
-              {liveStatus && <span className="text-slate-300">{liveStatus}</span>}
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center justify-between gap-3 pt-2 border-t border-slate-800">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="font-semibold text-slate-300">TAIEX 加權指數指標：</span>
+              <span className="font-semibold text-slate-300">TAIEX 加權指數指標（可微調試算）：</span>
               <label className="flex items-center gap-1 text-slate-400">
                 收盤
                 <input
@@ -304,6 +270,11 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
               )}
             </div>
           </div>
+          {manifest?.regime.reasons && manifest.regime.reasons.length > 0 && (
+            <div className="text-[11px] text-slate-400">
+              大盤判定依據：{manifest.regime.reasons.join(' ｜ ')}
+            </div>
+          )}
         </div>
       )}
 
@@ -312,8 +283,8 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span>
-            <strong>台股模型切換指引：</strong>
-            金融業請切換至專屬 Fin-QVM 模型，並務必於每季核對 MOPS 資本適足性與資產品質監理數據；強景氣循環股（航運／記憶體／面板／設備／IC設計）請切換至 Cyclical-QVM 模式；嚴禁使用融資或質押槓桿。
+            <strong>台股無伺服器真實數據架構：</strong>
+            所有財報與日線皆由 GitHub Actions 每日收盤後自動產出靜態 JSON；個人持倉與金融 MOPS 監理覆寫僅儲存於您的瀏覽器本機 `localStorage`，絕不上傳公開倉庫。
           </span>
         </div>
         <span className="font-mono tabular-nums text-amber-300">

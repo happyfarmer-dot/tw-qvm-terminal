@@ -6,13 +6,13 @@ from typing import Any, Literal, Optional
 import numpy as np
 import pandas as pd
 
-from app.calculators.cyclical_metrics import compute_pb_river_5to7y
-from app.calculators.financial_ratios import (
+from pipeline.calculators.cyclical_metrics import compute_pb_river_5to7y
+from pipeline.calculators.financial_ratios import (
     extract_annual_snapshots,
     pivot_finmind_statements,
     safe_div,
 )
-from app.schemas.qvm_models import RegulatoryOverrideRecord
+from pipeline.schemas import RegulatoryOverrideRecord
 
 
 FinancialProfile = Literal["financial_bank", "financial_life_fhc"]

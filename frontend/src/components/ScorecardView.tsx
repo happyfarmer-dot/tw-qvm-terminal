@@ -61,7 +61,7 @@ const PIOTROSKI_ITEMS: { key: keyof PiotroskiChecks; label: string }[] = [
 
 export const ScorecardView: React.FC = () => {
   const {
-    dataSourceMode,
+    universe,
     regime,
     holdings,
     frictionConfig,
@@ -92,14 +92,12 @@ export const ScorecardView: React.FC = () => {
     updateManualFinancialMetrics,
     setJustifiedPbSensitivity,
     loadCandidateIntoScorecard,
-    loadBackendSnapshotIntoScorecard,
+    saveLocalRegulatoryOverride,
     addHolding,
     setActiveTab,
-    getProvider,
   } = useTwQuantStore();
 
   const [fetchCode, setFetchCode] = useState(manualSymbol);
-  const [fetchLoading, setFetchLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [regSaveMsg, setRegSaveMsg] = useState<string | null>(null);
   const [showPiotroski, setShowPiotroski] = useState(false);
@@ -243,57 +241,60 @@ export const ScorecardView: React.FC = () => {
     [manualScorecard.piotroskiChecks]
   );
 
-  const handleFetchStock = async (forceRefresh = false) => {
-    const clean = fetchCode.trim().toUpperCase();
+  const matchedDropdownStocks = useMemo(() => {
+    const q = fetchCode.trim().toUpperCase();
+    if (!q) return universe.slice(0, 40);
+    return universe
+      .filter((s) => s.symbol.includes(q) || s.name.toUpperCase().includes(q))
+      .slice(0, 25);
+  }, [universe, fetchCode]);
+
+  const handleLoadFromStaticPool = (queryOverride?: string) => {
+    const clean = (queryOverride ?? fetchCode).trim().toUpperCase();
     if (!clean) return;
     setFetchError(null);
     setRegSaveMsg(null);
-    setFetchLoading(true);
-    try {
-      const provider = getProvider();
-      if (dataSourceMode === 'mock') {
-        const mockHit = await provider.fetchMockStock(clean);
-        if (!mockHit) {
-          throw new Error(
-            `Mock 資料集內建 10 檔範例（2330, 2308, 2382, 2345, 9910, 6599, 2603, 3131, 2886, 2888），請切換 Live FastAPI 查詢 ${clean}`
-          );
-        }
-        loadCandidateIntoScorecard(mockHit);
-      } else {
-        const snap = await provider.fetchStock(clean, forceRefresh);
-        loadBackendSnapshotIntoScorecard(snap);
-      }
-    } catch (err) {
-      setFetchError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setFetchLoading(false);
+    const exact = universe.find(
+      (s) => s.symbol.toUpperCase() === clean || s.name.toUpperCase() === clean
+    );
+    const partial =
+      exact ??
+      universe.find(
+        (s) => s.symbol.toUpperCase().includes(clean) || s.name.toUpperCase().includes(clean)
+      );
+    if (!partial) {
+      setFetchError(
+        `此代號「${clean}」尚未納入排程清單，請至 GitHub watchlist.json 新增並執行排程，或於下方手動輸入財報數值試算。`
+      );
+      return;
     }
+    setFetchCode(partial.symbol);
+    loadCandidateIntoScorecard(partial);
   };
 
-  const handleSaveRegulatoryToBackend = async () => {
+  const handleSaveRegulatoryLocal = () => {
     setRegSaveMsg(null);
-    try {
-      const provider = getProvider();
-      await provider.saveRegulatoryData(manualSymbol, {
-        asOfQuarter: manualFinancialMetrics.asOfQuarter,
-        isDsib: manualFinancialMetrics.isDsib,
-        fhcCarPct: manualFinancialMetrics.fhcCarPct,
-        bankBisPct: manualFinancialMetrics.bankBisPct,
-        bankCet1Pct: manualFinancialMetrics.bankCet1Pct,
-        doubleLeverageRatioPct: manualFinancialMetrics.doubleLeverageRatioPct,
-        nplRatioPct: manualFinancialMetrics.nplRatioPct,
-        nplConsecutiveRiseQuarters: manualFinancialMetrics.nplConsecutiveRiseQuarters,
-        nplCoverageRatioPct: manualFinancialMetrics.nplCoverageRatioPct,
-        lifeSolvencyRatioPct: manualFinancialMetrics.lifeSolvencyRatioPct,
-        lifeSolvencyRegime: manualFinancialMetrics.lifeSolvencyRegime,
-        ociRestrictsDividend: manualFinancialMetrics.ociRestrictsDividend,
-        recentDilutiveOfferingPct: manualFinancialMetrics.recentDilutiveOfferingPct,
-      });
-      setRegSaveMsg('已儲存至後端 SQLite（即時生效）');
-      setTimeout(() => setRegSaveMsg(null), 3000);
-    } catch (err) {
-      setRegSaveMsg(`儲存失敗：${err instanceof Error ? err.message : String(err)}`);
+    if (!manualSymbol.trim()) {
+      setRegSaveMsg('請先指定股票代號');
+      return;
     }
+    saveLocalRegulatoryOverride(manualSymbol, {
+      asOfQuarter: manualFinancialMetrics.asOfQuarter,
+      isDsib: manualFinancialMetrics.isDsib,
+      fhcCarPct: manualFinancialMetrics.fhcCarPct,
+      bankBisPct: manualFinancialMetrics.bankBisPct,
+      bankCet1Pct: manualFinancialMetrics.bankCet1Pct,
+      doubleLeverageRatioPct: manualFinancialMetrics.doubleLeverageRatioPct,
+      nplRatioPct: manualFinancialMetrics.nplRatioPct,
+      nplConsecutiveRiseQuarters: manualFinancialMetrics.nplConsecutiveRiseQuarters,
+      nplCoverageRatioPct: manualFinancialMetrics.nplCoverageRatioPct,
+      lifeSolvencyRatioPct: manualFinancialMetrics.lifeSolvencyRatioPct,
+      lifeSolvencyRegime: manualFinancialMetrics.lifeSolvencyRegime,
+      ociRestrictsDividend: manualFinancialMetrics.ociRestrictsDividend,
+      recentDilutiveOfferingPct: manualFinancialMetrics.recentDilutiveOfferingPct,
+    });
+    setRegSaveMsg('已儲存至本機瀏覽器 localStorage（即時生效，不會上傳公開倉庫）');
+    setTimeout(() => setRegSaveMsg(null), 3500);
   };
 
   const radarData = isFinancialProfile
@@ -362,29 +363,34 @@ export const ScorecardView: React.FC = () => {
               type="text"
               value={fetchCode}
               onChange={(e) => setFetchCode(e.target.value.toUpperCase())}
-              placeholder="輸入台股代號 (如 2330, 2603, 2886, 2888)"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleLoadFromStaticPool();
+              }}
+              placeholder="輸入代號或中文股名 (如 2330, 台積電)"
               className="w-60 px-3 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-700 font-mono text-slate-100"
             />
             <button
-              onClick={() => handleFetchStock(false)}
-              disabled={fetchLoading}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 flex items-center gap-1.5 disabled:opacity-50"
+              onClick={() => handleLoadFromStaticPool()}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-300 flex items-center gap-1.5"
             >
               <DownloadCloud className="w-3.5 h-3.5" />
-              {fetchLoading
-                ? '抓取中...'
-                : dataSourceMode === 'live'
-                  ? '向後端拉取真實數據'
-                  : '載入 Mock 範例'}
+              載入真實財報
             </button>
-            {dataSourceMode === 'live' && (
-              <button
-                onClick={() => handleFetchStock(true)}
-                disabled={fetchLoading}
-                className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300"
+            {universe.length > 0 && (
+              <select
+                value=""
+                onChange={(e) => {
+                  if (e.target.value) handleLoadFromStaticPool(e.target.value);
+                }}
+                className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-700 text-slate-200 max-w-[210px]"
               >
-                強制重整
-              </button>
+                <option value="">從真實追蹤池快速選擇 ({universe.length} 檔)...</option>
+                {matchedDropdownStocks.map((s) => (
+                  <option key={s.symbol} value={s.symbol}>
+                    {s.symbol} {s.name} ({s.sector})
+                  </option>
+                ))}
+              </select>
             )}
           </div>
 
@@ -552,15 +558,13 @@ export const ScorecardView: React.FC = () => {
                     MOPS 監理數據填寫抽屜（階段零金融防雷＋體質評分）
                   </h2>
                   <div className="flex items-center gap-2">
-                    {dataSourceMode === 'live' && (
-                      <button
-                        onClick={handleSaveRegulatoryToBackend}
-                        className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 flex items-center gap-1"
-                      >
-                        <Save className="w-3.5 h-3.5" />
-                        儲存至後端 SQLite
-                      </button>
-                    )}
+                    <button
+                      onClick={handleSaveRegulatoryLocal}
+                      className="px-2.5 py-1 text-xs font-semibold rounded bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-300 flex items-center gap-1"
+                    >
+                      <Save className="w-3.5 h-3.5" />
+                      儲存至本機瀏覽器 (localStorage)
+                    </button>
                     <span
                       className={`text-xs px-2 py-0.5 rounded border ${
                         activeStageZero.passed

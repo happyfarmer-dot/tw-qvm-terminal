@@ -18,20 +18,7 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
-class CacheStats(CamelModel):
-    totalEntries: int
-    validEntries: int
-    dbPath: str
-
-
-class HealthResponse(CamelModel):
-    status: Literal["ok"] = "ok"
-    finmindTier: Literal["free", "backer"]
-    finmindTokenConfigured: bool
-    cacheStats: CacheStats
-
-
-class RegimeResponse(CamelModel):
+class RegimeModel(CamelModel):
     regime: Literal["NORMAL", "DEFENSIVE"]
     indexSymbol: str = "TAIEX"
     indexClose: Optional[float] = None
@@ -39,7 +26,6 @@ class RegimeResponse(CamelModel):
     drawdown20dPct: Optional[float] = None
     annualizedVol20dPct: Optional[float] = None
     reasons: list[str] = Field(default_factory=list)
-    fromCache: bool = False
 
 
 class PiotroskiChecksModel(CamelModel):
@@ -190,7 +176,7 @@ class FinancialSectorMetricsModel(CamelModel):
     netRevenue12mYoY: Optional[float] = None
     biasFromMa200Pct: Optional[float] = None
     volAdjustedMomentum12_1M: Optional[float] = None
-    # 合併自 financial_regulatory_overrides 的 MOPS 監理欄位（未填為 None）
+    # 靜態管線中所有 MOPS 監理欄位預設為 None，由前端瀏覽器 localStorage 覆寫合併
     asOfQuarter: Optional[str] = None
     isDsib: Optional[bool] = None
     fhcCarPct: Optional[float] = None
@@ -237,21 +223,28 @@ class TwStockSnapshot(CamelModel):
     dataQuality: DataQualityModel
 
 
-class BatchStockRequest(CamelModel):
-    symbols: list[str] = Field(..., min_length=1, max_length=25)
-    force_refresh: bool = False
+class PipelineStatsModel(CamelModel):
+    totalWatchlist: int
+    successCount: int
+    failedCount: int
+    skippedDueToQuota: int = 0
+    cacheHits: int = 0
+    finmindFetched: int = 0
+    failedSymbols: list[dict[str, str]] = Field(default_factory=list)
+    finmindQuotaRemaining: Optional[int] = None
+    finmindQuotaLimit: Optional[int] = None
 
 
-class BatchStockError(CamelModel):
-    symbol: str
-    error: str
+class ManifestModel(CamelModel):
+    version: int = 1
+    status: Literal["ready", "partial", "awaiting_first_run"] = "ready"
+    updatedAtTaipei: str
+    updatedAtUtc: str
+    regime: RegimeModel
+    stats: PipelineStatsModel
 
 
-class BatchStockResponse(CamelModel):
-    results: list[TwStockSnapshot] = Field(default_factory=list)
-    errors: list[BatchStockError] = Field(default_factory=list)
-
-
-class CacheClearResponse(CamelModel):
-    deletedCount: int
-    symbol: Optional[str] = None
+class StocksBundleModel(CamelModel):
+    version: int = 1
+    updatedAtTaipei: str
+    stocks: list[TwStockSnapshot] = Field(default_factory=list)

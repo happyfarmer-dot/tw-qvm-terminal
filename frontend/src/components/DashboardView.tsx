@@ -30,7 +30,7 @@ import { formatTwd, GradeBadge, PriorityBadge } from './GradeBadge';
 
 export const DashboardView: React.FC = () => {
   const {
-    dataSourceMode,
+    manifest,
     regime,
     universe,
     holdings,
@@ -152,10 +152,21 @@ export const DashboardView: React.FC = () => {
 
   return (
     <div className="space-y-5">
+      {universe.length === 0 && (
+        <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-amber-200 space-y-1.5">
+          <div className="font-bold text-amber-300 text-sm">
+            尚未載入真實台股數據包（{manifest?.status === 'awaiting_first_run' ? '等待首次 GitHub Actions 排程執行' : '數據池為空'}）
+          </div>
+          <p>
+            本系統已全面採用「GitHub Actions 自動產出真實數據 ＋ GitHub Pages 靜態架構」。請前往您的 GitHub 儲存庫 → <strong>Actions</strong> → <strong>Update Real TW Stock Data</strong> → 點擊 <strong>Run workflow</strong>，即可在 1–2 分鐘內自動抓取真實台股財報與日線並部署上線。
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-slate-100">
-            TW-QVM 量化總覽儀表板 ({dataSourceMode === 'live' ? 'Live FastAPI 模式' : 'Mock 模擬資料'})
+            TW-QVM 量化總覽儀表板（真實台股數據）
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
             {regime === 'DEFENSIVE' ? '防禦模式 (50/40/10)' : '常態模式 (40/35/25)'} ｜ {pit.label}
