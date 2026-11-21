@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-21 14:55",
-  "updatedAtUtc": "2026-11-21T06:55:50.856964+00:00",
+  "updatedAtTaipei": "2026-11-21 16:43",
+  "updatedAtUtc": "2026-11-21T08:43:31.516401+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -21,8 +21,8 @@
     "successCount": 79,
     "failedCount": 0,
     "skippedDueToQuota": 0,
-    "cacheHits": 75,
-    "finmindFetched": 4,
+    "cacheHits": 79,
+    "finmindFetched": 0,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
     "finmindQuotaLimit": null
