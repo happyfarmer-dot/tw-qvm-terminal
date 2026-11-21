@@ -54,6 +54,35 @@ NON_MFG_KEYWORDS = (
 )
 
 
+CORE_LEADERS: tuple[str, ...] = (
+    "2330",  # 台積電
+    "2317",  # 鴻海
+    "2454",  # 聯發科
+    "2308",  # 台達電
+    "2881",  # 富邦金
+    "2882",  # 國泰金
+    "2891",  # 中信金
+    "2886",  # 兆豐金
+    "2603",  # 長榮
+    "3131",  # 弘塑
+    "2382",  # 廣達
+    "3231",  # 緯創
+    "6669",  # 緯穎
+    "2345",  # 智邦
+    "3008",  # 大立光
+    "2412",  # 中華電
+    "2002",  # 中鋼
+    "1301",  # 台塑
+    "1216",  # 統一
+    "2884",  # 玉山金
+    "5880",  # 合庫金
+    "2880",  # 華南金
+    "2885",  # 元大金
+    "2892",  # 第一金
+    "2888",  # 新光金
+)
+
+
 def load_watchlist(watchlist_path: Path, target_symbols_env: str = "") -> list[str]:
     symbols: list[str] = []
     if watchlist_path.exists():
@@ -73,7 +102,11 @@ def load_watchlist(watchlist_path: Path, target_symbols_env: str = "") -> list[s
         # 將手動指定的 target_symbols 置於最優先佇列
         merged = priority + [s for s in symbols if s not in priority]
         return merged
-    return symbols
+
+    # 若未指定特定代號，將核心龍頭權值與重要循環/金融股排在最前面，確保匿名或額度受限時先抓最關鍵標的
+    leaders = [s for s in CORE_LEADERS if s in symbols]
+    others = [s for s in symbols if s not in CORE_LEADERS]
+    return leaders + others
 
 
 def build_stock_snapshot(
@@ -347,11 +380,18 @@ async def run_pipeline(
     rev_start = (taipei_today - dt.timedelta(days=800)).strftime("%Y-%m-%d")
     taiex_start = (taipei_today - dt.timedelta(days=420)).strftime("%Y-%m-%d")
 
-    # 1. 檢查 FinMind 額度
+    # 1. 檢查 FinMind 額度與決定本輪最大抓取量
+    is_token_mode = bool(finmind.token)
+    default_max_stocks = 65 if is_token_mode else 25
+    effective_max_stocks = min(max_finmind_stocks, default_max_stocks)
+
     quota_info = await finmind.check_user_info()
     quota_remaining = quota_info.get("remaining")
     quota_limit = quota_info.get("limit")
-    quota_exhausted = quota_remaining is not None and quota_remaining < 10
+
+    # 匿名模式下每小時約 250–300 次，保留 220 次上限；Token 模式上限 600 次保留 520 次
+    max_requests_allowed = (quota_limit or 520) if is_token_mode else 220
+    quota_exhausted = (quota_remaining is not None and quota_remaining < 8) or (finmind.request_count >= max_requests_allowed)
 
     # 2. 預抓 TWSE / TPEx 全市場零額度快照
     await twse_tpex.prefetch_market_snapshots()
@@ -396,8 +436,9 @@ async def run_pipeline(
 
         can_call_finmind = (
             not quota_exhausted
-            and finmind_stocks_used < max_finmind_stocks
-            and (quota_remaining is None or (quota_remaining - finmind.request_count) >= 8)
+            and finmind_stocks_used < effective_max_stocks
+            and finmind.request_count < max_requests_allowed
+            and (quota_remaining is None or (quota_remaining - finmind.request_count) >= 6)
         )
 
         used_finmind_for_sym = False
@@ -549,8 +590,9 @@ async def run_pipeline(
 
 def main() -> None:
     root_dir = Path(__file__).resolve().parent.parent
-    token = os.getenv("FINMIND_API_TOKEN", "")
-    max_stocks = int(os.getenv("MAX_FINMIND_STOCKS_PER_RUN", "65"))
+    token = os.getenv("FINMIND_API_TOKEN", "").strip()
+    default_max = "65" if token else "25"
+    max_stocks = int(os.getenv("MAX_FINMIND_STOCKS_PER_RUN", default_max))
     target_symbols = os.getenv("TARGET_SYMBOLS", "")
     force_refresh = os.getenv("FORCE_REFRESH", "false").lower() in ("1", "true", "yes")
 

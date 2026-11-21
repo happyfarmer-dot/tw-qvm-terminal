@@ -206,3 +206,44 @@ async def test_pipeline_quota_guard_and_incremental_cache(tmp_path: Path) -> Non
     assert bundle_file.exists()
     ManifestModel.model_validate_json(manifest_file.read_text(encoding="utf-8"))
     StocksBundleModel.model_validate_json(bundle_file.read_text(encoding="utf-8"))
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_pipeline_anonymous_fallback_mode(tmp_path: Path) -> None:
+    # 驗證無 Token 時自動採用匿名模式（每小時 220 次上限，優先處理核心龍頭股）
+    pipeline_dir = tmp_path / "pipeline"
+    pipeline_dir.mkdir(parents=True)
+    (pipeline_dir / "watchlist.json").write_text(
+        json.dumps({"symbols": ["9999", "2330", "2317"]}), encoding="utf-8"
+    )
+
+    # Mock TWSE / TPEx OpenAPI
+    respx.get(TWSE_COMPANY_INFO_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TPEX_COMPANY_INFO_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TWSE_STOCK_DAY_ALL_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TWSE_VALUATION_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TPEX_DAILY_QUOTES_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TWSE_DIRECTOR_PLEDGE_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TWSE_PUNISH_URL).mock(return_value=httpx.Response(200, json={"data": []}))
+    respx.get(TWSE_MONTHLY_REV_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(TPEX_MONTHLY_REV_URL).mock(return_value=httpx.Response(200, json=[]))
+    respx.get(FINMIND_V4_URL).mock(return_value=httpx.Response(200, json={"status": 200, "data": []}))
+
+    async with httpx.AsyncClient(trust_env=False) as client:
+        fm = FinMindClient(token="", min_interval_seconds=0.0, http_client=client)
+        tw = TwseTpexClient(http_client=client)
+
+        manifest, bundle = await run_pipeline(
+            root_dir=tmp_path,
+            finmind_token="",
+            max_finmind_stocks=65,  # 應自動限縮為 25 檔核心股
+            finmind_client=fm,
+            twse_client=tw,
+        )
+
+    assert manifest.stats.totalWatchlist == 3
+    # 2330, 2317 為核心龍頭股，應排在 9999 之前優先處理
+    symbols_processed = [s.symbol for s in bundle.stocks]
+    assert symbols_processed[:2] == ["2330", "2317"]
+

@@ -30,7 +30,6 @@ import { formatTwd, GradeBadge, PriorityBadge } from './GradeBadge';
 
 export const DashboardView: React.FC = () => {
   const {
-    manifest,
     regime,
     universe,
     holdings,
@@ -153,12 +152,22 @@ export const DashboardView: React.FC = () => {
   return (
     <div className="space-y-5">
       {universe.length === 0 && (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-amber-200 space-y-1.5">
-          <div className="font-bold text-amber-300 text-sm">
-            尚未載入真實台股數據包（{manifest?.status === 'awaiting_first_run' ? '等待首次 GitHub Actions 排程執行' : '數據池為空'}）
+        <div className="rounded-xl border border-amber-500/40 bg-amber-950/30 p-4 text-xs text-amber-200 space-y-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-bold text-amber-300 text-sm flex items-center gap-1.5">
+              ⚡ 首批真實台股數據建庫中
+            </span>
+            <a
+              href="https://github.com/happyfarmer-dot/tw-qvm-terminal/actions"
+              target="_blank"
+              rel="noreferrer"
+              className="text-cyan-400 hover:underline font-semibold"
+            >
+              查看 GitHub Actions 執行進度 ↗
+            </a>
           </div>
-          <p>
-            本系統已全面採用「GitHub Actions 自動產出真實數據 ＋ GitHub Pages 靜態架構」。請前往您的 GitHub 儲存庫 → <strong>Actions</strong> → <strong>Update Real TW Stock Data</strong> → 點擊 <strong>Run workflow</strong>，即可在 1–2 分鐘內自動抓取真實台股財報與日線並部署上線。
+          <p className="text-slate-300 leading-relaxed">
+            系統正在透過 GitHub Actions 在背景自動抓取台股真實 7 年財報與大盤日線數據（約需 2–3 分鐘）。無須任何人工操作，完成後重新整理此頁面即可自動呈現最新全套戰報！
           </p>
         </div>
       )}

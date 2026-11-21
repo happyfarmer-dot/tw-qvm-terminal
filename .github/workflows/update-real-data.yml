@@ -1,9 +1,15 @@
 name: Update Real TW Stock Data
 
 on:
+  push:
+    branches: ["main", "master"]
+    paths-ignore:
+      - 'frontend/public/data/**'
+      - 'pipeline/cache/**'
+      - '**.md'
   schedule:
-    # 週一至週五 台灣時間 18:45 (UTC 10:45)
-    - cron: '45 10 * * 1-5'
+    # 每 2 小時自動輪詢續傳與增量更新
+    - cron: '0 */2 * * *'
   workflow_dispatch:
     inputs:
       target_symbols:

@@ -377,20 +377,38 @@ export const ScorecardView: React.FC = () => {
               載入真實財報
             </button>
             {universe.length > 0 && (
-              <select
-                value=""
-                onChange={(e) => {
-                  if (e.target.value) handleLoadFromStaticPool(e.target.value);
-                }}
-                className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-700 text-slate-200 max-w-[210px]"
-              >
-                <option value="">從真實追蹤池快速選擇 ({universe.length} 檔)...</option>
-                {matchedDropdownStocks.map((s) => (
-                  <option key={s.symbol} value={s.symbol}>
-                    {s.symbol} {s.name} ({s.sector})
-                  </option>
-                ))}
-              </select>
+              <div className="flex flex-wrap items-center gap-1.5">
+                <select
+                  value=""
+                  onChange={(e) => {
+                    if (e.target.value) handleLoadFromStaticPool(e.target.value);
+                  }}
+                  className="px-2.5 py-1.5 text-xs rounded-lg bg-slate-950 border border-slate-700 text-slate-200 max-w-[210px]"
+                >
+                  <option value="">從真實追蹤池選擇 ({universe.length} 檔)...</option>
+                  {matchedDropdownStocks.map((s) => (
+                    <option key={s.symbol} value={s.symbol}>
+                      {s.symbol} {s.name} ({s.sector})
+                    </option>
+                  ))}
+                </select>
+                <div className="hidden sm:flex items-center gap-1">
+                  {universe.slice(0, 5).map((s) => (
+                    <button
+                      key={s.symbol}
+                      onClick={() => handleLoadFromStaticPool(s.symbol)}
+                      className={`px-2 py-1 text-[11px] font-mono rounded border transition-colors ${
+                        manualSymbol === s.symbol
+                          ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 font-bold'
+                          : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300'
+                      }`}
+                      title={`${s.symbol} ${s.name} (${s.sector})`}
+                    >
+                      {s.symbol} {s.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
 
@@ -405,6 +423,22 @@ export const ScorecardView: React.FC = () => {
             加入持倉監控台
           </button>
         </div>
+
+        {universe.length === 0 && (
+          <div className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/30 px-3 py-2.5 rounded-lg flex flex-wrap items-center justify-between gap-2">
+            <span>
+              ⚡ <strong>首批數據建庫中：</strong> GitHub Actions 正在背景自動抓取真實台股財報與日線（約需 2–3 分鐘）。
+            </span>
+            <a
+              href="https://github.com/happyfarmer-dot/tw-qvm-terminal/actions"
+              target="_blank"
+              rel="noreferrer"
+              className="text-cyan-400 hover:underline font-semibold flex items-center gap-1"
+            >
+              查看 Actions 執行進度 ↗
+            </a>
+          </div>
+        )}
 
         {fetchError && (
           <div className="text-xs text-rose-300 bg-rose-500/10 border border-rose-500/30 px-3 py-2 rounded-lg">

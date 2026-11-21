@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { evaluateCyclicalRating } from '../engine/cyclicalScoring';
 import { evaluateFinancialRating } from '../engine/financialScoring';
 import { evaluateRating } from '../engine/ratingAndRegime';
+import { rankBatchWithZScore } from '../engine/scoringBatchZ';
 import { evaluateStageZero } from '../engine/stageZero';
 import type {
   BenchmarkRegimeInput,
@@ -297,8 +298,12 @@ export const useTwQuantStore = create<TwQuantState>((set, get) => ({
         const currentMatch = universe.find((u) => u.symbol === state.manualSymbol);
         if (currentMatch) {
           scorecardPatch = buildManualFromCandidate(currentMatch);
-        } else if (!state.manualSymbol) {
-          const defaultStock = universe.find((u) => u.symbol === '2330') ?? universe[0];
+        } else {
+          // 自動選中評級最高分且未踩雷的 A 級標的，若無則依序選 2330 或第一檔
+          const rankedPool = rankBatchWithZScore(universe, nextRegime);
+          const topA = rankedPool.find((r) => r.rating.finalGrade === 'A' && r.stageZero.passed);
+          const tsmc = universe.find((u) => u.symbol === '2330');
+          const defaultStock = topA?.stock ?? tsmc ?? universe[0];
           scorecardPatch = buildManualFromCandidate(defaultStock);
         }
       }
