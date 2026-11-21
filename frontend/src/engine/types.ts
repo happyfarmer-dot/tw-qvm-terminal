@@ -360,6 +360,17 @@ export interface HealthQuarterlyChartPoint {
   dio: number | null;
 }
 
+export interface HealthPeRiverPrices {
+  ttmEps: number | null;
+  p20Pe: number | null;
+  p50Pe: number | null;
+  p80Pe: number | null;
+  cheapPrice: number | null;
+  fairPrice: number | null;
+  expensivePrice: number | null;
+  currentStatusLabel?: string | null;
+}
+
 export interface HealthValuationBandSummary {
   metricLabel: string;
   currentValue: number | null;
@@ -370,6 +381,7 @@ export interface HealthValuationBandSummary {
   p80Val: number | null;
   maxVal: number | null;
   positionComment: string;
+  peRiver?: HealthPeRiverPrices | null;
 }
 
 export interface HealthChartSeries {

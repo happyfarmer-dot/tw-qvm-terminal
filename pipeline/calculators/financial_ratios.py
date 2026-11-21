@@ -48,13 +48,58 @@ def _pick_abs(row: dict[str, float], keys: list[str]) -> Optional[float]:
     return abs(val) if val is not None else None
 
 
+def _resolve_annual_flow(
+    src: dict[str, dict[str, float]],
+    dlist: list[str],
+    keys: list[str],
+    is_ytd_statement: bool = False,
+) -> Optional[float]:
+    """
+    計算年度損益或現金流流量科目（嚴防 FinMind 累計 YTD 報表被重複加總 4 次）：
+    - 現金流量表 (`TaiwanStockCashFlowsStatement`) 在 FinMind 為累計 YTD 數據：
+      若該年度有 `-12-31` 年報列，必須只取 `-12-31` 該列數值（即全年累計數）；
+    - 綜合損益表 (`TaiwanStockFinancialStatements`) 在 FinMind 通常為單季數，
+      但若測試資料或特殊報表僅提供 `-12-31` 單一列年報、或數值呈現單調遞增 YTD 特徵，則自動判斷：
+      若為 YTD 則取 `-12-31` 列；若為 4 季單季數則加總該年度 4 季。
+    """
+    if not dlist:
+        return None
+    dec31 = [d for d in dlist if d.endswith("-12-31")]
+    vals_by_d = [(d, _pick(src[d], keys)) for d in sorted(dlist)]
+    valid = [(d, v) for d, v in vals_by_d if v is not None]
+    if not valid:
+        return None
+
+    # 1. 若明確為 YTD 累計報表（如現金流量表），優先取 -12-31 年報列
+    if is_ytd_statement:
+        if dec31:
+            v_dec = _pick(src[dec31[-1]], keys)
+            if v_dec is not None:
+                return v_dec
+        return valid[-1][1]
+
+    # 2. 若該年僅有 -12-31 一筆年報列，直接取該列
+    if len(valid) == 1 and valid[0][0].endswith("-12-31"):
+        return valid[0][1]
+
+    # 3. 檢查損益表是否實際上被填入 YTD 累計數（例如 Q4 >= Q1+Q2+Q3 * 0.85 且正數單調大幅遞增）
+    if len(valid) >= 3 and valid[-1][0].endswith("-12-31"):
+        v_list = [v for _, v in valid]
+        if all(v > 0 for v in v_list) and v_list[0] < v_list[1] < v_list[-1]:
+            if v_list[-1] >= sum(v_list[:-1]) * 0.82 and (v_list[-1] / v_list[0]) >= 2.6:
+                return v_list[-1]
+
+    return sum(v for _, v in valid)
+
+
 def extract_annual_snapshots(
     income_rows: list[dict[str, Any]],
     balance_rows: list[dict[str, Any]],
     cashflow_rows: list[dict[str, Any]],
 ) -> list[dict[str, Optional[float]]]:
     """
-    從近 5 年財報抽取年度快照（依會計年度最後一期或 Q4 累計），回傳依年份升冪排序之列表。
+    從近 5–7 年財報抽取完整會計年度快照（優先篩選具備 `-12-31` 年報列之完整會計年度），
+    嚴格避免將累計季報（YTD）重複加總。回傳依年份升冪排序之列表。
     """
     inc = pivot_finmind_statements(income_rows)
     bal = pivot_finmind_statements(balance_rows)
@@ -64,7 +109,6 @@ def extract_annual_snapshots(
     if not all_dates:
         return []
 
-    # 依年份分組，若該年度有多季資料，損益/現金流累計或取年報(-12-31)，資產負債取期末(-12-31)
     by_year: dict[str, list[str]] = {}
     for d in all_dates:
         year = d[:4]
@@ -73,50 +117,48 @@ def extract_annual_snapshots(
     snapshots: list[dict[str, Optional[float]]] = []
     for year in sorted(by_year.keys()):
         dates = sorted(by_year[year])
-        last_d = dates[-1]
+        dec31_dates = [d for d in dates if d.endswith("-12-31")]
+        has_annual_close = len(dec31_dates) > 0
+        last_d = dec31_dates[-1] if has_annual_close else dates[-1]
         b_row = bal.get(last_d, {})
 
-        # 若損益表/現金流量表已有 Q4(-12-31) 累計或單季，優先檢查各季加總或 Q4
-        # FinMind 台灣綜合損益表通常是單季數；若一年有 4 季則加總損益/現金流科目
         inc_dates = [d for d in dates if d in inc]
         cf_dates = [d for d in dates if d in cf]
 
-        def sum_field(src: dict[str, dict[str, float]], dlist: list[str], keys: list[str]) -> Optional[float]:
-            vals = [_pick(src[d], keys) for d in dlist]
-            non_null = [v for v in vals if v is not None]
-            if not non_null:
-                return None
-            return sum(non_null)
-
-        # 僅納入完整年度或最新完整年度（若僅有今年部分季度則另外作為 TTM 處理）
-        revenue = sum_field(inc, inc_dates, ["Revenue", "OperatingRevenue"])
-        gross_profit = sum_field(inc, inc_dates, ["GrossProfit"])
-        cogs = sum_field(inc, inc_dates, ["CostOfGoodsSold", "OperatingCosts"])
+        revenue = _resolve_annual_flow(inc, inc_dates, ["Revenue", "OperatingRevenue"], is_ytd_statement=False)
+        gross_profit = _resolve_annual_flow(inc, inc_dates, ["GrossProfit"], is_ytd_statement=False)
+        cogs = _resolve_annual_flow(inc, inc_dates, ["CostOfGoodsSold", "OperatingCosts"], is_ytd_statement=False)
         if gross_profit is None and revenue is not None and cogs is not None:
             gross_profit = revenue - cogs
 
-        op_income = sum_field(inc, inc_dates, ["OperatingIncome", "OperatingProfit"])
-        sga = sum_field(inc, inc_dates, ["OperatingExpenses", "SellingAndAdministrativeExpenses"])
+        op_income = _resolve_annual_flow(inc, inc_dates, ["OperatingIncome", "OperatingProfit"], is_ytd_statement=False)
+        sga = _resolve_annual_flow(inc, inc_dates, ["OperatingExpenses", "SellingAndAdministrativeExpenses"], is_ytd_statement=False)
         if sga is None and gross_profit is not None and op_income is not None:
             sga = gross_profit - op_income
 
-        net_income = sum_field(
+        net_income = _resolve_annual_flow(
             inc,
             inc_dates,
             ["IncomeAfterTaxes", "NetIncome", "IncomeFromContinuingOperations"],
+            is_ytd_statement=False,
         )
-        interest_exp = sum_field(inc, inc_dates, ["InterestExpense", "FinanceCosts"])
-        depreciation = sum_field(
+        eps = _resolve_annual_flow(inc, inc_dates, ["EPS"], is_ytd_statement=False)
+        interest_exp = _resolve_annual_flow(inc, inc_dates, ["InterestExpense", "FinanceCosts"], is_ytd_statement=False)
+
+        # 現金流量表在 FinMind 皆為 YTD 累計至該季，必須只取 -12-31 年報列！
+        depreciation = _resolve_annual_flow(
             cf,
             cf_dates,
             ["Depreciation", "DepreciationAndAmortization"],
+            is_ytd_statement=True,
         )
-        ocf = sum_field(
+        ocf = _resolve_annual_flow(
             cf,
             cf_dates,
             ["CashFlowsFromOperatingActivities", "OperatingCashFlow"],
+            is_ytd_statement=True,
         )
-        capex = sum_field(
+        capex = _resolve_annual_flow(
             cf,
             cf_dates,
             [
@@ -124,35 +166,47 @@ def extract_annual_snapshots(
                 "CapitalExpenditure",
                 "PropertyAndPlantAndEquipment",
             ],
+            is_ytd_statement=True,
         )
         capex_abs = abs(capex) if capex is not None else None
-        div_paid = sum_field(cf, cf_dates, ["CashDividendsPaid", "DividendsPaid"])
+        div_paid = _resolve_annual_flow(cf, cf_dates, ["CashDividendsPaid", "DividendsPaid"], is_ytd_statement=True)
 
         total_assets = _pick(b_row, ["TotalAssets"])
         current_assets = _pick(b_row, ["CurrentAssets"])
         current_liab = _pick(b_row, ["CurrentLiabilities"])
-        ar = _pick(b_row, ["AccountsReceivable", "NotesAndAccountsReceivable"])
+        ar = _pick(b_row, ["AccountsReceivable", "AccountsReceivableNet", "NotesAndAccountsReceivable"])
         inv = _pick(b_row, ["Inventory", "Inventories"])
         ppe = _pick(b_row, ["PropertyPlantAndEquipment"])
         cash = _pick(b_row, ["CashAndCashEquivalents"])
         lt_debt = _pick(
             b_row,
-            ["LongTermLiabilities", "LongTermDebt", "NonCurrentLiabilities"],
+            [
+                "LongtermBorrowings",
+                "LongTermLiabilities",
+                "LongTermDebt",
+                "BondsPayable",
+                "NoncurrentLiabilities",
+                "NonCurrentLiabilities",
+            ],
         )
-        total_liab = _pick(b_row, ["TotalLiabilities"])
-        equity = _pick(b_row, ["Equity", "TotalEquity", "StockholdersEquity"])
+        total_liab = _pick(b_row, ["TotalLiabilities", "Liabilities"])
+        equity = _pick(b_row, ["Equity", "TotalEquity", "StockholdersEquity", "EquityAttributableToOwnersOfParent"])
         retained_earnings = _pick(b_row, ["RetainedEarnings"])
         shares = _pick(b_row, ["OrdinaryShare", "CapitalStock", "CommonStock"])
+
+        q_count = 4.0 if has_annual_close else float(len(inc_dates))
 
         snapshots.append(
             {
                 "year": float(year),
-                "quarterCount": float(len(inc_dates)),
+                "hasAnnualClose": 1.0 if has_annual_close else 0.0,
+                "quarterCount": q_count,
                 "revenue": revenue,
                 "grossProfit": gross_profit,
                 "operatingIncome": op_income,
                 "sga": sga,
                 "netIncome": net_income,
+                "eps": eps,
                 "interestExpense": abs(interest_exp) if interest_exp is not None else None,
                 "depreciation": abs(depreciation) if depreciation is not None else None,
                 "ocf": ocf,
@@ -174,6 +228,100 @@ def extract_annual_snapshots(
         )
 
     return snapshots
+
+
+def compute_ttm_metrics(
+    income_rows: list[dict[str, Any]],
+    cashflow_rows: list[dict[str, Any]],
+) -> dict[str, Optional[float]]:
+    """
+    計算近四季（TTM）指標：
+    - 對 YTD 累計制報表（如現金流量表 OCF / CapEx / 折舊）：
+      若最新一期為 `-12-31` Q4 年報，直接取該年報列；
+      若最新一期為非 Q4（如 `2026-09-30`），則精確使用：
+      `TTM = 最新累計季報 (2026-09-30) + 前一年度年報 (2025-12-31) - 前一年同季累計季報 (2025-09-30)`。
+    - 對單季制報表（如綜合損益表 EPS / 營收 / 營業利益 / 淨利）：
+      若該科目為 YTD 則同樣套用 `最新累計 + 前一年報 - 前一年同季累計`，若為單季則取最近 4 個季度相加。
+    """
+    inc = pivot_finmind_statements(income_rows)
+    cf = pivot_finmind_statements(cashflow_rows)
+
+    def calc_ytd_ttm(src: dict[str, dict[str, float]], keys: list[str]) -> Optional[float]:
+        dates = sorted(d for d in src.keys() if _pick(src[d], keys) is not None)
+        if not dates:
+            return None
+        latest_d = dates[-1]
+        v_latest = _pick(src[latest_d], keys)
+        if v_latest is None:
+            return None
+        if latest_d.endswith("-12-31"):
+            return v_latest
+        yr = int(latest_d[:4])
+        suffix = latest_d[4:]  # e.g. "-09-30"
+        prev_annual_d = f"{yr - 1}-12-31"
+        prev_same_q_d = f"{yr - 1}{suffix}"
+        v_prev_ann = _pick(src.get(prev_annual_d, {}), keys)
+        v_prev_q = _pick(src.get(prev_same_q_d, {}), keys)
+        if v_prev_ann is not None and v_prev_q is not None:
+            return v_latest + v_prev_ann - v_prev_q
+        if v_prev_ann is not None:
+            return v_prev_ann
+        return v_latest
+
+    def calc_inc_ttm(keys: list[str]) -> Optional[float]:
+        dates = sorted(d for d in inc.keys() if _pick(inc[d], keys) is not None)
+        if not dates:
+            return None
+        latest_d = dates[-1]
+        yr = latest_d[:4]
+        same_yr_dates = [d for d in dates if d.startswith(yr)]
+        # 判斷是否為 YTD 報表
+        prev_yr = str(int(yr) - 1)
+        prev_yr_dates = [d for d in dates if d.startswith(prev_yr)]
+        is_ytd = False
+        if len(prev_yr_dates) >= 3 and prev_yr_dates[-1].endswith("-12-31"):
+            v_p = [_pick(inc[d], keys) or 0.0 for d in prev_yr_dates]
+            if all(v > 0 for v in v_p) and v_p[0] < v_p[1] < v_p[-1] and v_p[-1] >= sum(v_p[:-1]) * 0.82:
+                is_ytd = True
+        elif len(same_yr_dates) == 1 and latest_d.endswith("-12-31"):
+            is_ytd = True
+
+        if is_ytd:
+            return calc_ytd_ttm(inc, keys)
+
+        if len(dates) >= 4:
+            vals4 = [_pick(inc[d], keys) for d in dates[-4:]]
+            if all(v is not None for v in vals4):
+                return sum(v for v in vals4 if v is not None)
+        return _pick(inc[latest_d], keys)
+
+    ttm_ocf = calc_ytd_ttm(cf, ["CashFlowsFromOperatingActivities", "OperatingCashFlow"])
+    ttm_capex_raw = calc_ytd_ttm(
+        cf,
+        [
+            "AcquisitionOfPropertyPlantAndEquipment",
+            "CapitalExpenditure",
+            "PropertyAndPlantAndEquipment",
+        ],
+    )
+    ttm_capex = abs(ttm_capex_raw) if ttm_capex_raw is not None else None
+    ttm_dep_raw = calc_ytd_ttm(cf, ["Depreciation", "DepreciationAndAmortization"])
+    ttm_dep = abs(ttm_dep_raw) if ttm_dep_raw is not None else None
+
+    ttm_rev = calc_inc_ttm(["Revenue", "OperatingRevenue"])
+    ttm_op_inc = calc_inc_ttm(["OperatingIncome", "OperatingProfit"])
+    ttm_ni = calc_inc_ttm(["IncomeAfterTaxes", "NetIncome", "IncomeFromContinuingOperations"])
+    ttm_eps = calc_inc_ttm(["EPS"])
+
+    return {
+        "ttmRevenue": ttm_rev,
+        "ttmOperatingIncome": ttm_op_inc,
+        "ttmNetIncome": ttm_ni,
+        "ttmEps": round(ttm_eps, 2) if ttm_eps is not None else None,
+        "ttmOcf": ttm_ocf,
+        "ttmCapex": ttm_capex,
+        "ttmDepreciation": ttm_dep,
+    }
 
 
 def compute_beneish_m_score(
@@ -316,8 +464,12 @@ def compute_piotroski_checks(
     ocf = curr.get("ocf")
     ni = curr.get("netIncome")
 
-    ltd_curr = safe_div(curr.get("longTermDebt"), curr.get("totalAssets"))
-    ltd_prev = safe_div(prev.get("longTermDebt"), prev.get("totalAssets"))
+    ta_curr = curr.get("totalAssets")
+    ta_prev = prev.get("totalAssets")
+    ltd_val_curr = curr.get("longTermDebt") if curr.get("longTermDebt") is not None else (0.0 if ta_curr is not None else None)
+    ltd_val_prev = prev.get("longTermDebt") if prev.get("longTermDebt") is not None else (0.0 if ta_prev is not None else None)
+    ltd_curr = safe_div(ltd_val_curr, ta_curr)
+    ltd_prev = safe_div(ltd_val_prev, ta_prev)
 
     cr_curr = safe_div(curr.get("currentAssets"), curr.get("currentLiabilities"))
     cr_prev = safe_div(prev.get("currentAssets"), prev.get("currentLiabilities"))
@@ -415,8 +567,8 @@ def compute_consecutive_2q_ar_inv_bloat(
 
         rev_c = _pick(inc[d_curr], ["Revenue", "OperatingRevenue"])
         rev_p = _pick(inc[target_prev_prefix], ["Revenue", "OperatingRevenue"])
-        ar_c = _pick(bal[d_curr], ["AccountsReceivable", "NotesAndAccountsReceivable"])
-        ar_p = _pick(bal[target_prev_prefix], ["AccountsReceivable", "NotesAndAccountsReceivable"])
+        ar_c = _pick(bal[d_curr], ["AccountsReceivable", "AccountsReceivableNet", "NotesAndAccountsReceivable"])
+        ar_p = _pick(bal[target_prev_prefix], ["AccountsReceivable", "AccountsReceivableNet", "NotesAndAccountsReceivable"])
         inv_c = _pick(bal[d_curr], ["Inventory", "Inventories"])
         inv_p = _pick(bal[target_prev_prefix], ["Inventory", "Inventories"])
 
@@ -446,16 +598,21 @@ def compute_all_financial_ratios(
 ) -> dict[str, Any]:
     """彙總計算所有階段零與階段一所需財務比率；缺值一律回傳 None"""
     snapshots = extract_annual_snapshots(income_rows, balance_rows, cashflow_rows)
-    # 僅使用至少有 4 季或完整年報的年度快照進行年度對比
-    full_years = [s for s in snapshots if (s.get("quarterCount") or 0) >= 4]
+    # 計算「年度指標」（如近 3 年累計營業現金流、近 3 年平均 ROIC、近 3 年累計 OCF/NI、F-Score）時，
+    # 必須只篩選完整會計年度（具備 -12-31 年報列）
+    full_years = [s for s in snapshots if (s.get("hasAnnualClose") or 0) >= 1.0]
     if len(full_years) < 2:
+        full_years = [s for s in snapshots if (s.get("quarterCount") or 0) >= 4]
+    if len(full_years) < 1:
         full_years = snapshots
 
     curr = full_years[-1] if len(full_years) >= 1 else {}
     prev = full_years[-2] if len(full_years) >= 2 else {}
+    ttm = compute_ttm_metrics(income_rows, cashflow_rows)
 
     # 股本股數與市值計算（單位：FinMind 財報為元、股本通常為元，每股面額 10 元 -> 股數 = 股本 / 10）
-    capital_stock = curr.get("shares")
+    latest_snap = snapshots[-1] if snapshots else curr
+    capital_stock = latest_snap.get("shares") or curr.get("shares")
     est_shares = shares_override or (
         capital_stock / 10.0 if capital_stock is not None and capital_stock > 0 else None
     )
@@ -468,7 +625,7 @@ def compute_all_financial_ratios(
     beneish_m = compute_beneish_m_score(curr, prev) if curr and prev else None
     altman_z, altman_zpp = compute_altman_scores(curr, market_cap_twd) if curr else (None, None)
 
-    # 近 3 個完整會計年度累計 OCF 與 OCF/NI
+    # 近 3 個完整會計年度 (-12-31) 累計 OCF 與 OCF/NI
     last3 = full_years[-3:] if len(full_years) >= 3 else []
     cumulative_3y_ocf: Optional[float] = None
     ocf_to_ni_3y_pct: Optional[float] = None
@@ -488,7 +645,7 @@ def compute_all_financial_ratios(
         ltd = y.get("longTermDebt") or 0.0
         cash = y.get("cash") or 0.0
         if op_inc is not None and eq is not None:
-            invested_cap = eq + ltd - cash
+            invested_cap = max(eq * 0.5, eq + ltd - cash)
             r = safe_div(op_inc * 0.8, invested_cap)
             if r is not None and invested_cap > 0:
                 roics.append(r * 100.0)
@@ -502,15 +659,16 @@ def compute_all_financial_ratios(
     gpa = safe_div(curr.get("grossProfit"), curr.get("totalAssets")) if curr else None
     gpa_pct = round(gpa * 100.0, 2) if gpa is not None else None
 
-    # EV/EBITDA, EV/EBIT, FCF/EV
+    # EV/EBITDA, EV/EBIT, FCF/EV（優先使用正確 TTM 數據，若無則退回最新完整年報 curr）
     ev: Optional[float] = None
-    if market_cap_twd is not None and curr.get("equity") is not None:
-        total_debt = curr.get("longTermDebt") or 0.0
-        cash = curr.get("cash") or 0.0
-        ev = market_cap_twd + total_debt - cash
+    ref_bal = latest_snap if latest_snap.get("equity") is not None else curr
+    if market_cap_twd is not None and ref_bal.get("equity") is not None:
+        total_debt = ref_bal.get("longTermDebt") or 0.0
+        cash = ref_bal.get("cash") or 0.0
+        ev = max(market_cap_twd * 0.3, market_cap_twd + total_debt - cash)
 
-    ebit = curr.get("operatingIncome") if curr else None
-    dep = curr.get("depreciation") if curr else None
+    ebit = ttm.get("ttmOperatingIncome") if ttm.get("ttmOperatingIncome") is not None else (curr.get("operatingIncome") if curr else None)
+    dep = ttm.get("ttmDepreciation") if ttm.get("ttmDepreciation") is not None else (curr.get("depreciation") if curr else None)
     ebitda = (ebit + dep) if (ebit is not None and dep is not None) else None
 
     ev_to_ebit = round(ev / ebit, 2) if (ev is not None and ebit is not None and ebit > 0) else None
@@ -519,8 +677,10 @@ def compute_all_financial_ratios(
     )
 
     fcf_yield_pct: Optional[float] = None
-    if ev is not None and ev > 0 and curr.get("ocf") is not None and curr.get("capex") is not None:
-        fcf = curr["ocf"] - curr["capex"]  # type: ignore[operator]
+    ocf_for_fcf = ttm.get("ttmOcf") if ttm.get("ttmOcf") is not None else (curr.get("ocf") if curr else None)
+    capex_for_fcf = ttm.get("ttmCapex") if ttm.get("ttmCapex") is not None else (curr.get("capex") if curr else None)
+    if ev is not None and ev > 0 and ocf_for_fcf is not None and capex_for_fcf is not None:
+        fcf = ocf_for_fcf - capex_for_fcf
         fcf_yield_pct = round((fcf / ev) * 100.0, 2)
 
     # Piotroski 9 項

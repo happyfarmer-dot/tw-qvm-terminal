@@ -18,6 +18,7 @@ from pipeline.schemas import (
     HealthDimensionMetricModel,
     HealthDimensionModel,
     HealthExecutiveSummaryModel,
+    HealthPeRiverPricesModel,
     HealthQuarterlyChartPointModel,
     HealthReportModel,
     HealthSafetyItemModel,
@@ -52,7 +53,7 @@ def _fmt_money_yi(val_twd: Optional[float]) -> str:
 
 def _profile_display_label(profile: ValuationProfile) -> str:
     if profile == "cyclical_heavy_asset":
-        return "強景氣循環（重資產／航運面板記憶體）"
+        return "強景氣循環（重資產型）"
     if profile == "cyclical_inventory_order":
         return "強景氣循環（存貨與訂單領先型）"
     if profile == "financial_bank":
@@ -129,7 +130,7 @@ def _build_safety_checkup(
 
         if disp is True or (to_yi is not None and to_yi < 0.3) or (_is_num(pledge) and float(pledge) >= 70):
             st1: SafetyStatus = "fail"
-            exp1 = "成交量過低、列為處置股或大股東質押過高（>=70%），具流動性與籌碼斷頭風險。"
+            exp1 = "成交量過低、列為處置股或大股東質押過高（≥ 70%），具流動性與籌碼斷頭風險。"
             fatal_reasons.append("流動性不足或董監設質比例過高")
         elif _is_num(pledge) and float(pledge) >= 30:
             st1 = "warn"
@@ -222,7 +223,7 @@ def _build_safety_checkup(
                 itemName="資本適足與逾放比提醒",
                 displayValue="公開觀測站季報核對",
                 status="unknown",
-                plainExplanation="建議每季至公開資訊觀測站確認金控資本適足率（CAR >= 105%）與銀行逾放比（NPL <= 1%）。",
+                plainExplanation="建議每季至公開資訊觀測站確認金控資本適足率（CAR ≥ 105%）與銀行逾放比（NPL ≤ 1%）。",
             )
         )
         return items, len(fatal_reasons) > 0, fatal_reasons
@@ -365,8 +366,12 @@ def build_stock_health_report(
     price: Optional[float],
     high_20d: Optional[float],
     atr20: Optional[float],
+    ma20: Optional[float] = None,
     ma120: Optional[float],
     ma200: Optional[float],
+    ret20d_pct: Optional[float] = None,
+    rsi14: Optional[float] = None,
+    pe_river_data: Optional[dict[str, Any]] = None,
     sz: StageZeroMetricsModel,
     ratios: FinancialRatiosModel,
     cyc: CyclicalMetricsModel,
@@ -376,6 +381,7 @@ def build_stock_health_report(
 ) -> HealthReportModel:
     """
     依個股自動適配之模型（標準品質／強景氣循環／銀行金控）產出 5 大章節完整白話《個股深度健檢報告書》。
+    所有比較運算符統一採用純 Unicode（≥ / ≤），嚴禁出現未渲染的 $ 符號。
     """
     safety_items, has_fatal, fatal_reasons = _build_safety_checkup(
         profile=profile,
@@ -426,21 +432,21 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="近 5 年平均股東權益報酬率（ROE）",
                 valueText=_fmt_num(roe5, 1, "%"),
-                benchmarkText="銀行 >= 9%｜壽險金控 >= 10%",
+                benchmarkText="銀行 ≥ 9%｜壽險金控 ≥ 10%",
                 status="優秀" if (_is_num(roe5) and float(roe5) >= 9.5) else ("穩健" if (_is_num(roe5) and float(roe5) >= 7.0) else ("警訊" if _is_num(roe5) else "待確認")),
                 comment="衡量金融機構運用股東資金創造獲利的長期效率。" if _is_num(roe5) else "財報歷史序列整理中。",
             ),
             HealthDimensionMetricModel(
                 label="近 5 年獲利波動穩定度（ROE 標準差）",
                 valueText=_fmt_num(roe_std, 2, "%"),
-                benchmarkText="波動 <= 2.5% 為極穩健",
+                benchmarkText="波動 ≤ 2.5% 為極穩健",
                 status="優秀" if (_is_num(roe_std) and float(roe_std) <= 2.0) else ("穩健" if (_is_num(roe_std) and float(roe_std) <= 4.0) else ("警訊" if _is_num(roe_std) else "待確認")),
                 comment="數值越低代表跨升降息循環的獲利越穩定，不易大起大落。",
             ),
             HealthDimensionMetricModel(
                 label="連續穩定配息年數",
                 valueText=f"{int(div_years)} 年" if _is_num(div_years) else ("5 年以上" if ratios.consecutive5yDividend else "待確認"),
-                benchmarkText="連續配息 >= 5 年且無動用老本",
+                benchmarkText="連續配息 ≥ 5 年且無動用老本",
                 status="優秀" if ((_is_num(div_years) and int(div_years) >= 5) or ratios.consecutive5yDividend) else "穩健",
                 comment="檢驗金控是否具備穿越景氣週期、持續發放現金股息的實力。",
             ),
@@ -483,7 +489,7 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="目前股價淨值比（P/B）對比合理淨值比",
                 valueText=pb_vs_just_txt,
-                benchmarkText="折溢價比 <= 1.05 倍為合理買點",
+                benchmarkText="折溢價比 ≤ 1.05 倍為合理買點",
                 status="優秀" if (_is_num(pb_ratio) and float(pb_ratio) <= 0.95) else ("穩健" if (_is_num(pb_ratio) and float(pb_ratio) <= 1.15) else ("偏貴" if _is_num(pb_ratio) else "待確認")),
                 comment="以長期 ROE 與配息率推算合理股價淨值比，判斷目前股價是否委屈或偏貴。",
             ),
@@ -497,7 +503,7 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="現金股利殖利率與盈餘配發率",
                 valueText=f"殖利率 {_fmt_num(div_yld, 1, '%')}｜配發率 {_fmt_num(payout, 0, '%')}",
-                benchmarkText="殖利率 >= 4.0% 且配發率 45%–85%",
+                benchmarkText="殖利率 ≥ 4.0% 且配發率 45%–85%",
                 status="優秀" if (_is_num(div_yld) and float(div_yld) >= 4.5) else ("穩健" if (_is_num(div_yld) and float(div_yld) >= 3.2) else ("偏貴" if _is_num(div_yld) else "待確認")),
                 comment="殖利率提供下檔保護，健康的配發率則確保公司留有足夠資本緩衝。",
             ),
@@ -540,21 +546,21 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="近 12 個月累計淨收益年增率",
                 valueText=_fmt_num(rev12, 1, "%"),
-                benchmarkText="全年累計年增率 >= 0%",
+                benchmarkText="全年累計年增率 ≥ 0%",
                 status="優秀" if (_is_num(rev12) and float(rev12) >= 10) else ("穩健" if (_is_num(rev12) and float(rev12) >= 0) else ("警訊" if _is_num(rev12) else "待確認")),
                 comment="檢視過去一年完整年度營收底氣是否穩健。",
             ),
             HealthDimensionMetricModel(
                 label="收盤價與 200 日長期均線位置（年線乖離）",
                 valueText=f"年線 {_fmt_num(ma200, 1, ' 元')}（乖離 {_fmt_num(bias200, 1, '%')}）",
-                benchmarkText="站穩年線之上且正乖離 <= 18%",
+                benchmarkText="站穩年線之上且正乖離 ≤ 18%",
                 status="優秀" if (_is_num(bias200) and 0 <= float(bias200) <= 15) else ("偏貴" if (_is_num(bias200) and float(bias200) > 22) else ("警訊" if _is_num(bias200) else "待確認")),
                 comment="金融股不適合在年線正乖離過大時追高，貼近年線布局更具安全邊際。",
             ),
             HealthDimensionMetricModel(
                 label="過去一年風險調整後股價動能",
                 valueText=_fmt_num(mom_s, 2, ""),
-                benchmarkText="動能比值 >= 0.5 為強勢穩步墊高",
+                benchmarkText="動能比值 ≥ 0.5 為強勢穩步墊高",
                 status="優秀" if (_is_num(mom_s) and float(mom_s) >= 0.8) else ("穩健" if (_is_num(mom_s) and float(mom_s) >= 0.2) else ("警訊" if _is_num(mom_s) else "待確認")),
                 comment="考量波動度後的過去一年趨勢強度，數值越高代表股價走勢越穩健。",
             ),
@@ -622,21 +628,21 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="跨週期 5–7 年平均投入資本回報率（ROIC）",
                 valueText=_fmt_num(roic_cyc, 1, "%"),
-                benchmarkText="跨景氣循環平均 >= 8%（>= 12% 極優）",
+                benchmarkText="跨景氣循環平均 ≥ 8%（≥ 12% 極優）",
                 status="優秀" if (_is_num(roic_cyc) and float(roic_cyc) >= 12) else ("穩健" if (_is_num(roic_cyc) and float(roic_cyc) >= 7) else ("警訊" if _is_num(roic_cyc) else "待確認")),
                 comment="撫平景氣高峰與谷底後的真實平均本業回報率，驗證公司是否具備長期護城河。",
             ),
             HealthDimensionMetricModel(
                 label="景氣谷底流動比率與負債安全度",
                 valueText=f"流動比 {_fmt_num(worst_cr, 2, ' 倍')}｜淨負債比 {_fmt_num(worst_nd, 0, '%')}",
-                benchmarkText="流動比 >= 1.4 倍且淨負債比 <= 60%",
-                status="優秀" if (_is_num(worst_cr) and float(worst_cr) >= 1.8) else ("穩健" if (_is_num(worst_cr) and float(worst_cr) >= 1.3) else ("警訊" if _is_num(worst_cr) else "待確認")),
+                benchmarkText="流動比 ≥ 1.4 倍且淨負債比 ≤ 60%",
+                status="優秀" if (_is_num(worst_cr) and float(worst_cr) >= 1.8) else ("穩健" if (_is_num(worst_cr) and float(worst_cr) >= 1.2) else ("警訊" if _is_num(worst_cr) else "待確認")),
                 comment="檢驗公司在景氣最差年度是否仍有充足現金與低負債度過寒冬。",
             ),
             HealthDimensionMetricModel(
                 label="總資產年增率（產能過度擴張警告）",
                 valueText=_fmt_num(asset_g, 1, "%"),
-                benchmarkText="溫和擴張 <= 18%（> 30% 為高點過度擴產警訊）",
+                benchmarkText="溫和擴張 ≤ 18%（> 30% 為高點過度擴產警訊）",
                 status="警訊" if (_is_num(asset_g) and float(asset_g) > 30) else ("優秀" if (_is_num(asset_g) and float(asset_g) <= 15) else ("穩健" if _is_num(asset_g) else "待確認")),
                 comment="循環股若在景氣最高峰大舉擴廠使資產暴增，往往是供過於求反轉的領先警訊。",
             ),
@@ -674,21 +680,21 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="5–7 年歷史股價淨值比（P/B）河流位置",
                 valueText=f"{_fmt_num(cur_pb, 2, ' 倍')}（歷史 {_fmt_num(pb_pct, 0, '% 分位')}）",
-                benchmarkText="歷史 0%–50% 中低位階區（>= 80% 過熱警戒）",
+                benchmarkText="歷史 0%–50% 中低位階區（≥ 80% 過熱警戒）",
                 status="優秀" if (_is_num(pb_pct) and float(pb_pct) <= 35) else ("穩健" if (_is_num(pb_pct) and float(pb_pct) <= 60) else ("偏貴" if _is_num(pb_pct) else "待確認")),
                 comment="循環股買在低股價淨值比（景氣谷底至復甦初段）、賣在高股價淨值比（景氣過熱期）。",
             ),
             HealthDimensionMetricModel(
                 label="跨週期常態化企業價值倍數（EV/EBIT）",
                 valueText=_fmt_num(norm_ev_ebit, 1, " 倍"),
-                benchmarkText="常態化倍數 <= 14 倍為便宜（<= 10 倍極具吸引力）",
+                benchmarkText="常態化倍數 ≤ 14 倍為便宜（≤ 10 倍極具吸引力）",
                 status="優秀" if (_is_num(norm_ev_ebit) and 0 < float(norm_ev_ebit) <= 12) else ("穩健" if (_is_num(norm_ev_ebit) and float(norm_ev_ebit) <= 18) else ("偏貴" if _is_num(norm_ev_ebit) else "待確認")),
-                comment="以 5–7 年平均營業利益率還原常態獲利，彻底避開景氣頂峰「假性低本益比」陷阱。",
+                comment="以 5–7 年平均營業利益率還原常態獲利，徹底避開景氣頂峰「假性低本益比」陷阱。",
             ),
             HealthDimensionMetricModel(
                 label="現期獲利（ROE）偏離歷史均值程度",
                 valueText=_fmt_num(roe_z, 2, " 倍標準差"),
-                benchmarkText="偏離度 <= +1.0 倍標準差（> +1.5 代表獲利處於極端高峰）",
+                benchmarkText="偏離度 ≤ +1.0 倍標準差（> +1.5 代表獲利處於極端高峰）",
                 status="偏貴" if (_is_num(roe_z) and float(roe_z) > 1.5) else ("優秀" if (_is_num(roe_z) and float(roe_z) <= 0.6) else ("穩健" if _is_num(roe_z) else "待確認")),
                 comment="當現期 ROE 遠高於過去 5–7 年平均時，代表景氣已處於頂峰，不宜再以高獲利追價。",
             ),
@@ -741,7 +747,7 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="單季毛利率環比拐點（較上季變化）",
                 valueText=gm_txt,
-                benchmarkText="單季毛利率止跌回升（較上季 >= 0%）",
+                benchmarkText="單季毛利率止跌回升（較上季 ≥ 0%）",
                 status="優秀" if (_is_num(gm_qoq) and float(gm_qoq) > 0.5) else ("穩健" if (_is_num(gm_qoq) and float(gm_qoq) >= 0) else ("警訊" if _is_num(gm_qoq) else "待確認")),
                 comment="反映產品報價與產能利用率變化，毛利率由谷底翻揚代表報價能力回溫。",
             ),
@@ -755,7 +761,7 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="收盤價與 200 日長期均線位置（年線乖離）",
                 valueText=f"年線 {_fmt_num(ma200, 1, ' 元')}（乖離 {_fmt_num(bias200, 1, '%')}）",
-                benchmarkText="站上半年線或年線，且年線正乖離 <= 35%",
+                benchmarkText="站上半年線或年線，且年線正乖離 ≤ 35%",
                 status="優秀" if (_is_num(bias200) and 0 <= float(bias200) <= 25) else ("偏貴" if (_is_num(bias200) and float(bias200) > 40) else ("警訊" if _is_num(bias200) else "待確認")),
                 comment="確認股價趨勢轉多，並避免在年線正乖離過大（短線過熱）時追高。",
             ),
@@ -812,28 +818,28 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="近 3 年平均投入資本回報率（ROIC）",
                 valueText=_fmt_num(roic, 1, "%"),
-                benchmarkText="優質門檻 >= 12%（>= 15% 頂尖護城河）",
+                benchmarkText="優質門檻 ≥ 12%（≥ 15% 頂尖護城河）",
                 status="優秀" if (_is_num(roic) and float(roic) >= 15) else ("穩健" if (_is_num(roic) and float(roic) >= 10) else ("警訊" if _is_num(roic) else "待確認")),
                 comment="衡量公司每投入 100 元資本能創造多少本業稅後利潤，是巴菲特最看重的護城河指標。",
             ),
             HealthDimensionMetricModel(
                 label="資產毛利率（毛利／總資產）",
                 valueText=_fmt_num(gpa, 1, "%"),
-                benchmarkText="優質門檻 >= 20%（>= 30% 高定價權）",
+                benchmarkText="優質門檻 ≥ 20%（≥ 30% 高定價權）",
                 status="優秀" if (_is_num(gpa) and float(gpa) >= 28) else ("穩健" if (_is_num(gpa) and float(gpa) >= 18) else ("警訊" if _is_num(gpa) else "待確認")),
                 comment="結合產品毛利率與資產運用效率，越高代表產品競爭力與資產週轉越強。",
             ),
             HealthDimensionMetricModel(
                 label="近 3 年盈餘現金轉換率（營業現金流／淨利）",
                 valueText=_fmt_num(ocf_ni, 0, "%"),
-                benchmarkText="健康標準 >= 90%（>= 100% 含金量極高）",
+                benchmarkText="健康標準 ≥ 90%（≥ 100% 含金量極高）",
                 status="優秀" if (_is_num(ocf_ni) and float(ocf_ni) >= 100) else ("穩健" if (_is_num(ocf_ni) and float(ocf_ni) >= 80) else ("警訊" if _is_num(ocf_ni) else "待確認")),
                 comment="檢驗帳面賺到的淨利有多少比例真正變成現金流入公司，大於 100% 代表獲利品質極佳。",
             ),
             HealthDimensionMetricModel(
                 label="財報財務強度（F-Score 9 項綜合健檢）",
                 valueText=f"{int(f_score)} / 9 分" if _is_num(f_score) else "待確認",
-                benchmarkText="穩健標準 >= 6 分（>= 7 分體質極強）",
+                benchmarkText="穩健標準 ≥ 6 分（≥ 7 分體質極強）",
                 status="優秀" if (_is_num(f_score) and int(f_score) >= 7) else ("穩健" if (_is_num(f_score) and int(f_score) >= 5) else ("警訊" if _is_num(f_score) else "待確認")),
                 comment="綜合檢視獲利能力、負債增減、流動性與毛利率是否較去年全面改善。",
             ),
@@ -869,19 +875,19 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="企業價值倍數（EV/EBITDA）",
                 valueText=_fmt_num(ev_ebitda, 1, " 倍"),
-                benchmarkText="合理區間 <= 16 倍（<= 12 倍物美價廉）",
+                benchmarkText="合理區間 ≤ 16 倍（≤ 12 倍物美價廉）",
                 status="優秀" if (_is_num(ev_ebitda) and 0 < float(ev_ebitda) <= 12) else ("穩健" if (_is_num(ev_ebitda) and float(ev_ebitda) <= 20) else ("偏貴" if _is_num(ev_ebitda) else "待確認")),
                 comment="把市值加上負債、扣除現金後對比本業現金獲利，比單看本益比更精準反映收購回本年數。",
             ),
             HealthDimensionMetricModel(
                 label="自由現金流殖利率",
                 valueText=_fmt_num(fcf_y, 1, "%"),
-                benchmarkText="穩健標準 >= 3.5%（>= 5.5% 現金回報極佳）",
+                benchmarkText="穩健標準 ≥ 3.5%（≥ 5.5% 現金回報極佳）",
                 status="優秀" if (_is_num(fcf_y) and float(fcf_y) >= 5.5) else ("穩健" if (_is_num(fcf_y) and float(fcf_y) >= 2.5) else ("偏貴" if _is_num(fcf_y) else "待確認")),
                 comment="公司扣除擴廠資本支出後，每年真正可自由支配發息或還債的現金報酬率。",
             ),
             HealthDimensionMetricModel(
-                label="目前本益比（P/E）与現金股利殖利率",
+                label="目前本益比（P/E）與現金股利殖利率",
                 valueText=f"本益比 {_fmt_num(pe, 1, ' 倍')}｜殖利率 {_fmt_num(div_y, 1, '%')}",
                 benchmarkText="本益比 12–22 倍且連續 5 年穩定配息",
                 status="優秀" if (_is_num(pe) and 0 < float(pe) <= 16) else ("穩健" if (_is_num(pe) and float(pe) <= 25) else ("偏貴" if _is_num(pe) else "待確認")),
@@ -933,21 +939,21 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="近 12 個月累計營收年增率（長線底氣）",
                 valueText=_fmt_num(rev12, 1, "%"),
-                benchmarkText="全年累計營收年增率 >= 0%",
+                benchmarkText="全年累計營收年增率 ≥ 0%",
                 status="優秀" if (_is_num(rev12) and float(rev12) >= 10) else ("穩健" if (_is_num(rev12) and float(rev12) >= 0) else ("警訊" if _is_num(rev12) else "待確認")),
                 comment="對比近 3 月與近 12 月營收年增率，可看出公司業績正在加速成長還是趨緩。",
             ),
             HealthDimensionMetricModel(
                 label="過去一年風險調整後股價動能表現",
                 valueText=_fmt_num(mom_s, 2, ""),
-                benchmarkText="動能值 >= 0.5 代表強於大盤且波動可控",
+                benchmarkText="動能值 ≥ 0.5 代表強於大盤且波動可控",
                 status="優秀" if (_is_num(mom_s) and float(mom_s) >= 1.0) else ("穩健" if (_is_num(mom_s) and float(mom_s) >= 0.3) else ("警訊" if _is_num(mom_s) else "待確認")),
                 comment="衡量過去一年扣除上沖下洗劇烈波動後的穩健上漲趨勢強度。",
             ),
             HealthDimensionMetricModel(
                 label="收盤價與 200 日長期均線位置（年線乖離）",
                 valueText=f"年線 {_fmt_num(ma200, 1, ' 元')}（乖離 {_fmt_num(bias200, 1, '%')}）",
-                benchmarkText="股價站穩年線之上（乖離 >= 0%）",
+                benchmarkText="股價站穩年線之上（乖離 ≥ 0%）",
                 status="優秀" if (_is_num(bias200) and 0 <= float(bias200) <= 22) else ("偏貴" if (_is_num(bias200) and float(bias200) > 32) else ("警訊" if _is_num(bias200) else "待確認")),
                 comment="200 日均線（年線）代表長期生命線，站穩年線之上代表長線多頭格局完好。",
             ),
@@ -990,18 +996,41 @@ def build_stock_health_report(
         if peak_circuit_breaker and grade in ("A", "B"):
             grade = "C"
 
+    # 短線過熱防追高濾網判定（A 級好股且近 20 日漲幅 ≥ 12% 或 14 日 RSI ≥ 70）
+    is_short_term_overheated = (
+        grade == "A"
+        and (
+            (_is_num(ret20d_pct) and float(ret20d_pct) >= 12.0)
+            or (_is_num(rsi14) and float(rsi14) >= 70.0)
+        )
+    )
+
     # ================== 第一章：總體診斷結論 ==================
     if grade == "A":
-        verdict_badge = "A 級｜核心買進標的"
-        if is_fin:
-            suitable_for = "長期防禦存股＋穩健領息"
-            one_line = f"{name}長期獲利 ROE 與配息紀錄極為穩健，目前股價淨值比處於合理偏低區間且站穩年線，適合分批布局作為核心收息部位。"
-        elif is_cyc:
-            suitable_for = "週期反轉波段布局"
-            one_line = f"{name}跨週期體質良好，目前歷史股價淨值比位階具安全邊際，且庫存去化與毛利率呈現正向拐點，適合依紀律分批布局。"
+        if is_short_term_overheated:
+            verdict_badge = "A 級｜體質優秀，短線過熱等拉回"
+            suitable_for = "耐心等拉回月線分批低接"
+            overheat_details: list[str] = []
+            if _is_num(ret20d_pct) and float(ret20d_pct) >= 12.0:
+                overheat_details.append(f"近 20 日已急漲 {float(ret20d_pct):.1f}%")
+            if _is_num(rsi14) and float(rsi14) >= 70.0:
+                overheat_details.append(f"14 日 RSI 達 {float(rsi14):.1f}")
+            detail_str = "、".join(overheat_details)
+            one_line = (
+                f"{name}基本面與長線趨勢均佳，但短線急漲乖離偏大（{detail_str}），"
+                "建議切勿市價追高，耐心掛單等待股價拉回 20 日月線附近再分批布局。"
+            )
         else:
-            suitable_for = "波段價差＋穩健領息"
-            one_line = f"{name}本業獲利效率極高且現金流充沛，月營收成長動能強勁並站穩年線之上，建議依兩階段紀律分批建倉。"
+            verdict_badge = "A 級｜核心買進標的"
+            if is_fin:
+                suitable_for = "長期防禦存股＋穩健領息"
+                one_line = f"{name}長期獲利 ROE 與配息紀錄極為穩健，目前股價淨值比處於合理偏低區間且站穩年線，適合分批布局作為核心收息部位。"
+            elif is_cyc:
+                suitable_for = "週期反轉波段布局"
+                one_line = f"{name}跨週期體質良好，目前歷史股價淨值比位階具安全邊際，且庫存去化與毛利率呈現正向拐點，適合依紀律分批布局。"
+            else:
+                suitable_for = "波段價差＋穩健領息"
+                one_line = f"{name}本業獲利效率極高且現金流充沛，月營收成長動能強勁並站穩年線之上，建議依兩階段紀律分批建倉。"
     elif grade == "B":
         verdict_badge = "B 級｜優質觀察名單"
         if v_dim < 55:
@@ -1046,19 +1075,17 @@ def build_stock_health_report(
     p_now = float(price) if _is_num(price) and float(price) > 0 else 0.0
     atr_val = float(atr20) if _is_num(atr20) and float(atr20) > 0 else round(max(0.5, p_now * 0.025), 2)
     h20_val = float(high_20d) if _is_num(high_20d) and float(high_20d) >= p_now else p_now
+    ma20_val = float(ma20) if _is_num(ma20) and float(ma20) > 0 else (round(p_now * 0.95, 2) if p_now > 0 else 0.0)
     ma200_val = round(float(ma200), 2) if _is_num(ma200) and float(ma200) > 0 else (round(p_now * 0.92, 2) if p_now > 0 else None)
 
     stop_loss = round(max(0.01, p_now - 2.5 * atr_val), 2) if p_now > 0 else None
     trail_mult = 2.0 if is_cyc else 3.0
     trailing_stop = round(max(0.01, h20_val - trail_mult * atr_val), 2) if h20_val > 0 else None
 
-    low_entry = round(max(0.01, p_now - 0.8 * atr_val), 1) if p_now > 0 else 0.0
-    high_entry = round(p_now + 0.3 * atr_val, 1) if p_now > 0 else 0.0
-
     can_buy = grade in ("A", "B") and not has_fatal
     if grade == "A":
         stance: Literal["BUY", "HOLD_OR_WATCH", "AVOID_OR_SELL"] = "BUY"
-        stance_label = "建議分批買進"
+        stance_label = "短線過熱，等拉回月線低接" if is_short_term_overheated else "建議分批買進"
     elif grade in ("B", "C"):
         stance = "HOLD_OR_WATCH"
         stance_label = "逢低布局／持有觀察" if grade == "B" else "觀望等待轉機"
@@ -1067,16 +1094,27 @@ def build_stock_health_report(
         stance_label = "建議避開或逢高減碼"
 
     first_tranche = (30 if regime == "DEFENSIVE" else 50) if can_buy else 0
+    second_tranche = 100 - first_tranche if can_buy else 0
 
     if can_buy and p_now > 0:
-        entry_zone_txt = (
-            f"NT$ {low_entry:,.1f} ~ {high_entry:,.1f} 之間分批布局，"
-            "建議於盤中量縮穩定時掛限價單，避開開盤前 15 分鐘急拉及漲停鎖死日。"
-        )
+        if is_short_term_overheated and ma20_val > 0:
+            low_ma20 = round(ma20_val * 0.985, 1)
+            high_ma20 = round(ma20_val * 1.015, 1)
+            entry_zone_txt = (
+                f"基本面與長線趨勢均佳，但短線急漲乖離偏大，建議耐心掛單等待拉回 20 日月線（約 NT$ {ma20_val:,.1f}）附近，"
+                f"於 NT$ {low_ma20:,.1f} ~ {high_ma20:,.1f} 區間（月線 ±1.5%）再分批低接布局，切勿直接市價追高。"
+            )
+        else:
+            low_entry = round(max(0.01, p_now - 0.8 * atr_val), 1)
+            high_entry = round(p_now + 0.3 * atr_val, 1)
+            entry_zone_txt = (
+                f"NT$ {low_entry:,.1f} ~ {high_entry:,.1f} 之間分批布局，"
+                "建議於盤中量縮穩定時掛限價單，避開開盤前 15 分鐘急拉及漲停鎖死日。"
+            )
         stop_ref_txt = f"NT$ {stop_loss:,.1f}" if stop_loss is not None else "停損防線"
         second_cond_txt = (
             f"首筆買進滿 1 個月或下次每月 10 日月營收公布後，確認近 3 月營收年增率維持正成長，"
-            f"且收盤價穩守 {stop_ref_txt} 停損線與年線之上，再投入剩餘 {100 - first_tranche}% 資金完成建倉。"
+            f"且收盤價穩守 {stop_ref_txt} 停損線與年線之上，再投入剩餘 {second_tranche}% 資金完成建倉。"
         )
     else:
         entry_zone_txt = "目前未達安全買進標準，建議空手觀望，保留現金等待基本面或估值改善。"
@@ -1132,6 +1170,11 @@ def build_stock_health_report(
     else:
         pos_comment = "歷史估值區間資料累積中，請同步參考企業價值倍數與本益比指標。"
 
+    # 一般品質成長股（非虧損且非強景氣循環股）附加「近 5 年歷史本益比（P/E）河流三價位」
+    pe_river_model: Optional[HealthPeRiverPricesModel] = None
+    if not is_cyc and pe_river_data and _is_num(pe_river_data.get("ttmEps")) and float(pe_river_data["ttmEps"]) > 0:
+        pe_river_model = HealthPeRiverPricesModel(**pe_river_data)
+
     val_band = HealthValuationBandSummaryModel(
         metricLabel="近 5–7 年股價淨值比（P/B）歷史區間位置",
         currentValue=cur_pb_val,
@@ -1142,6 +1185,7 @@ def build_stock_health_report(
         p80Val=band.p80,
         maxVal=band.max,
         positionComment=pos_comment,
+        peRiver=pe_river_model,
     )
 
     return HealthReportModel(

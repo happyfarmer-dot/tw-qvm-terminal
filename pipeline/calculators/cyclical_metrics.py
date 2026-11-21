@@ -6,7 +6,11 @@ from typing import Any, Literal, Optional
 import numpy as np
 import pandas as pd
 
-from pipeline.calculators.financial_ratios import extract_annual_snapshots, safe_div
+from pipeline.calculators.financial_ratios import (
+    compute_ttm_metrics,
+    extract_annual_snapshots,
+    safe_div,
+)
 
 
 ValuationProfile = Literal[
@@ -17,16 +21,65 @@ ValuationProfile = Literal[
     "financial_life_fhc",
 ]
 
+# 證交所 / 櫃買中心 OpenAPI 產業別代碼對照表 (t187ap03_L / mopsfin_t187ap03_O)
+TW_SECTOR_CODE_MAP: dict[str, str] = {
+    "01": "水泥工業",
+    "02": "食品工業",
+    "03": "塑膠工業",
+    "04": "紡織纖維",
+    "05": "電機機械",
+    "06": "電器電纜",
+    "07": "化學生技醫療",
+    "08": "玻璃陶瓷",
+    "09": "造紙工業",
+    "10": "鋼鐵工業",
+    "11": "橡膠工業",
+    "12": "汽車工業",
+    "13": "塑膠化工",
+    "14": "建材營造業",
+    "15": "航運業",
+    "16": "觀光餐旅",
+    "17": "金融保險業",
+    "18": "貿易百貨業",
+    "19": "綜合",
+    "20": "其他業",
+    "21": "化學工業",
+    "22": "生技醫療業",
+    "23": "油電燃氣業",
+    "24": "半導體業",
+    "25": "電腦及週邊設備業",
+    "26": "光電業",
+    "27": "通信網路業",
+    "28": "電子零組件業",
+    "29": "電子通路業",
+    "30": "資訊服務業",
+    "31": "其他電子業",
+    "32": "文化創意業",
+    "33": "農業科技業",
+    "35": "綠能環保",
+    "36": "數位雲端",
+    "37": "運動休閒",
+    "38": "居家生活",
+}
+
+HEAVY_ASSET_SECTOR_CODES = {"01", "03", "08", "09", "10", "11", "13", "15", "23", "26"}
+
 HEAVY_ASSET_KEYWORDS = (
     "航運",
+    "航空",
+    "海運",
+    "貨櫃",
+    "散裝",
     "光電",
     "面板",
     "鋼鐵",
     "塑膠",
     "塑化",
+    "橡膠",
     "造紙",
     "水泥",
     "玻璃",
+    "油電燃氣",
     "記憶體",
 )
 
@@ -41,36 +94,67 @@ INVENTORY_ORDER_KEYWORDS = (
 
 # 壽險主導／雙引擎金控 (富邦金、國泰金、凱基金/開發金、新光金等)
 LIFE_FHC_SYMBOLS = {"2881", "2882", "2883", "2888", "2823", "2867"}
-# 獨立銀行與銀行主導型金控 (兆豐金、第一金、合庫金、華南金、玉山金、永豐金、中信金、京城銀、台中銀等)
+# 獨立銀行與銀行主導型金控 (兆豐金、第一金、合庫金、華南金、玉山金、永豐金、中信金、元大金、上海商銀、彰銀、京城銀、台中銀等)
 BANK_FHC_SYMBOLS = {
-    "2886", "2892", "5880", "2880", "2884", "2890", "2891",
+    "2886", "2892", "5880", "2880", "2884", "2890", "2891", "2885", "5876", "2801",
     "2809", "2812", "2834", "2836", "2838", "2845", "2849", "2887",
 }
 
-# 常見台股記憶體製造與半導體設備/IC設計代表代號輔助辨識
-MEMORY_SYMBOLS = {"2337", "2344", "2408", "8299", "3006"}
-SEMI_EQUIP_IC_DESIGN_SYMBOLS = {
-    "2454", "3034", "3443", "3661", "6415", "5269", "6130",
-    "3131", "3583", "6187", "6640", "2404", "6196",
+# 常見台股重資產景氣循環股（航運、航空、記憶體、面板、塑化、鋼鐵、水泥、矽晶圓）
+HEAVY_ASSET_SYMBOLS = {
+    "2603", "2609", "2615", "2618", "2610", "2637", "2606", "2605",  # 航運/航空
+    "2337", "2344", "2408", "8299", "3006",  # 記憶體
+    "2409", "3481", "6116",  # 面板
+    "1301", "1303", "1326", "6505", "1304", "1312",  # 塑化
+    "2002", "2006", "2014", "2027",  # 鋼鐵
+    "1101", "1102",  # 水泥
+    "6488", "5483", "3532",  # 矽晶圓重資產循環
 }
+
+# 半導體設備、廠務工程與 IC 設計代表代號
+SEMI_EQUIP_IC_DESIGN_SYMBOLS = {
+    "2454", "3034", "2379", "3443", "3661", "3529", "5274", "6415", "5269", "6130",
+    "3131", "3583", "6187", "3680", "6640", "2404", "6196",
+}
+
+
+def normalize_tw_sector_name(raw_sector: Optional[str]) -> str:
+    """將證交所／櫃買純數字產業代碼（如 '15', '24'）轉為標準中文產業名稱。"""
+    if not raw_sector:
+        return "未分類"
+    s = str(raw_sector).strip()
+    padded = s.zfill(2) if s.isdigit() and len(s) <= 2 else s
+    return TW_SECTOR_CODE_MAP.get(padded, TW_SECTOR_CODE_MAP.get(s, s))
 
 
 def recommend_valuation_profile(
     sector: str, symbol: str = "", name: str = ""
 ) -> ValuationProfile:
-    sec = (sector or "").strip()
+    raw_sec = (sector or "").strip()
+    padded_code = raw_sec.zfill(2) if raw_sec.isdigit() and len(raw_sec) <= 2 else raw_sec
+    sec = normalize_tw_sector_name(raw_sec)
     nm = (name or "").strip()
     sym = (symbol or "").strip().upper()
-    combined = f"{sec} {nm}"
+    combined = f"{raw_sec} {sec} {nm}"
 
     if sym in LIFE_FHC_SYMBOLS or ("人壽" in combined or "壽險" in combined):
         return "financial_life_fhc"
-    if sym in BANK_FHC_SYMBOLS or "金融" in sec or "銀行" in combined or "金控" in combined:
+    if (
+        sym in BANK_FHC_SYMBOLS
+        or padded_code == "17"
+        or "金融" in sec
+        or "銀行" in combined
+        or "金控" in combined
+    ):
         return "financial_bank"
-    if sym in MEMORY_SYMBOLS or any(kw in combined for kw in HEAVY_ASSET_KEYWORDS):
-        return "cyclical_heavy_asset"
     if sym in SEMI_EQUIP_IC_DESIGN_SYMBOLS or any(kw in combined for kw in INVENTORY_ORDER_KEYWORDS):
         return "cyclical_inventory_order"
+    if (
+        sym in HEAVY_ASSET_SYMBOLS
+        or padded_code in HEAVY_ASSET_SECTOR_CODES
+        or any(kw in combined for kw in HEAVY_ASSET_KEYWORDS)
+    ):
+        return "cyclical_heavy_asset"
     return "standard"
 
 
@@ -230,6 +314,134 @@ def compute_pb_river_5to7y(
     return current_pb, pct, band, capital_reduction_suspected
 
 
+def compute_pe_river_5y(
+    *,
+    price_df: pd.DataFrame,
+    income_rows: list[dict[str, Any]],
+    balance_rows: list[dict[str, Any]],
+    cashflow_rows: list[dict[str, Any]],
+    latest_price: Optional[float],
+    trailing_pe_override: Optional[float] = None,
+) -> dict[str, Any]:
+    """
+    計算近 5 年歷史本益比（P/E）河流三價位（便宜價 / 合理中樞價 / 昂貴警戒價）：
+    - 利用過去 5 年還原或收盤股價與對應已知年度 EPS（僅取 > 0 之獲利年度），求出第 20 / 50 / 80 百分位倍數。
+    - 乘上最新近四季合計 EPS（TTM EPS，遵循正確 TTM 算法），算出具體台幣三價位。
+    """
+    empty: dict[str, Any] = {
+        "ttmEps": None,
+        "p20Pe": None,
+        "p50Pe": None,
+        "p80Pe": None,
+        "cheapPrice": None,
+        "fairPrice": None,
+        "expensivePrice": None,
+        "currentStatusLabel": None,
+    }
+    annuals = extract_annual_snapshots(income_rows, balance_rows, cashflow_rows)
+    full_years = [s for s in annuals if (s.get("hasAnnualClose") or 0) >= 1.0]
+    if not full_years:
+        full_years = annuals
+
+    ttm = compute_ttm_metrics(income_rows, cashflow_rows)
+    ttm_eps = ttm.get("ttmEps")
+
+    # 若財報未單獨提供 EPS，則以 TTM 淨利 / (股本 / 10) 推算，或以現價 / trailingPe 反推
+    if (ttm_eps is None or ttm_eps <= 0) and ttm.get("ttmNetIncome") is not None and annuals:
+        cap_stock = annuals[-1].get("shares")
+        if cap_stock is not None and cap_stock > 0:
+            est_eps = ttm["ttmNetIncome"] / (cap_stock / 10.0)  # type: ignore[operator]
+            if est_eps > 0 and math.isfinite(est_eps):
+                ttm_eps = round(est_eps, 2)
+
+    if (ttm_eps is None or ttm_eps <= 0) and latest_price and trailing_pe_override and trailing_pe_override > 0:
+        ttm_eps = round(latest_price / trailing_pe_override, 2)
+
+    if ttm_eps is None or ttm_eps <= 0:
+        return empty
+
+    # 建立近 5–7 年有效年度 EPS 對照點 (date_str, eps)
+    eps_points: list[tuple[str, float]] = []
+    for y in full_years[-6:]:
+        yr_int = int(y["year"]) if y.get("year") else 0
+        eps_val = y.get("eps")
+        if (eps_val is None or eps_val <= 0) and y.get("netIncome") is not None and y.get("shares"):
+            sh = (y["shares"] or 0.0) / 10.0
+            if sh > 0:
+                eps_val = (y["netIncome"] or 0.0) / sh
+        if yr_int > 0 and eps_val is not None and eps_val > 0.05 and math.isfinite(eps_val):
+            eps_points.append((f"{yr_int}-12-31", float(eps_val)))
+
+    pe_samples: list[float] = []
+    if not price_df.empty and eps_points:
+        p_col = "close" if "close" in price_df.columns else "adj_close"
+        df = price_df[["date", p_col]].dropna().copy()
+        df["date"] = df["date"].astype(str)
+        df = df.sort_values("date")
+        # 僅取最近 5 年約 1260 交易日，每 5 日抽樣
+        sampled = df.tail(1260).iloc[::5].copy()
+        eps_idx = 0
+        for _, row in sampled.iterrows():
+            p_date = str(row["date"])
+            p_val = float(row[p_col])
+            if p_val <= 0 or not math.isfinite(p_val):
+                continue
+            while eps_idx + 1 < len(eps_points) and eps_points[eps_idx + 1][0] <= p_date:
+                eps_idx += 1
+            if eps_points[eps_idx][0] > p_date and eps_idx == 0:
+                ref_eps = eps_points[0][1]
+            else:
+                ref_eps = eps_points[eps_idx][1]
+            if ref_eps > 0:
+                pe_val = p_val / ref_eps
+                if 2.0 <= pe_val <= 120.0 and math.isfinite(pe_val):
+                    pe_samples.append(pe_val)
+
+    if len(pe_samples) >= 8:
+        arr = np.array(pe_samples, dtype=float)
+        p20_pe = round(float(np.percentile(arr, 20)), 1)
+        p50_pe = round(float(np.percentile(arr, 50)), 1)
+        p80_pe = round(float(np.percentile(arr, 80)), 1)
+    elif trailing_pe_override and 3.0 <= trailing_pe_override <= 100.0:
+        p50_pe = round(float(trailing_pe_override), 1)
+        p20_pe = round(max(6.0, p50_pe * 0.78), 1)
+        p80_pe = round(p50_pe * 1.25, 1)
+    else:
+        p20_pe, p50_pe, p80_pe = 12.0, 16.0, 22.0
+
+    # 確保倍數嚴格遞增且有最小區間寬度
+    if p50_pe <= p20_pe:
+        p50_pe = round(p20_pe + 2.0, 1)
+    if p80_pe <= p50_pe:
+        p80_pe = round(p50_pe + 3.0, 1)
+
+    cheap_price = round(ttm_eps * p20_pe, 1)
+    fair_price = round(ttm_eps * p50_pe, 1)
+    exp_price = round(ttm_eps * p80_pe, 1)
+
+    status_lbl = "歷史合理區間"
+    if latest_price is not None and latest_price > 0:
+        if latest_price <= cheap_price:
+            status_lbl = "落入便宜打折區（低於 P20 便宜價）"
+        elif latest_price <= fair_price:
+            status_lbl = "合理偏低區（介於便宜價與合理中樞價之間）"
+        elif latest_price <= exp_price:
+            status_lbl = "合理偏高區（介於合理中樞價與昂貴警戒價之間）"
+        else:
+            status_lbl = "昂貴警戒區（高於 P80 昂貴警戒價，留意追高風險）"
+
+    return {
+        "ttmEps": round(ttm_eps, 2),
+        "p20Pe": p20_pe,
+        "p50Pe": p50_pe,
+        "p80Pe": p80_pe,
+        "cheapPrice": cheap_price,
+        "fairPrice": fair_price,
+        "expensivePrice": exp_price,
+        "currentStatusLabel": status_lbl,
+    }
+
+
 def compute_cyclical_metrics(
     *,
     price_df: pd.DataFrame,
@@ -242,8 +454,10 @@ def compute_cyclical_metrics(
 ) -> dict[str, Any]:
     """計算強景氣循環股特化指標（缺值一律回傳 None）"""
     annuals = extract_annual_snapshots(income_rows, balance_rows, cashflow_rows)
-    full_years = [s for s in annuals if (s.get("quarterCount") or 0) >= 4]
+    full_years = [s for s in annuals if (s.get("hasAnnualClose") or 0) >= 1.0]
     if len(full_years) < 3:
+        full_years = [s for s in annuals if (s.get("quarterCount") or 0) >= 4]
+    if len(full_years) < 1:
         full_years = annuals
 
     history_years = float(len(full_years))
@@ -258,7 +472,6 @@ def compute_cyclical_metrics(
     # 2. 季度資料整理（近 8 季 DIO、毛利率、合約負債、TTM 營收/獲利/資產）
     inc_q = _pivot_by_date_with_origin(income_rows)
     bal_q = _pivot_by_date_with_origin(balance_rows)
-    cf_q = _pivot_by_date_with_origin(cashflow_rows)
 
     q_dates = sorted(set(inc_q.keys()) & set(bal_q.keys()))
     dio_series: list[dict[str, Any]] = []
@@ -366,39 +579,15 @@ def compute_cyclical_metrics(
         if ag is not None:
             asset_growth_yoy = round(ag * 100.0, 2)
 
-    # TTM 營收、TTM 淨利、資本支出/折舊
-    ttm_rev: Optional[float] = None
-    ttm_ni: Optional[float] = None
-    if len(q_dates) >= 4:
-        last4 = q_dates[-4:]
-        revs4 = [_find_metric_value(inc_q[d], exact_types=("Revenue", "OperatingRevenue")) for d in last4]
-        nis4 = [_find_metric_value(inc_q[d], exact_types=("IncomeAfterTaxes", "NetIncome")) for d in last4]
-        if all(x is not None for x in revs4):
-            ttm_rev = sum(x for x in revs4 if x is not None)
-        if all(x is not None for x in nis4):
-            ttm_ni = sum(x for x in nis4 if x is not None)
-
+    # TTM 營收、TTM 淨利、資本支出/折舊（使用正確 YTD 差分 TTM 算法，嚴禁把 4 列 YTD 直接相加）
+    ttm = compute_ttm_metrics(income_rows, cashflow_rows)
+    ttm_rev = ttm.get("ttmRevenue")
+    ttm_ni = ttm.get("ttmNetIncome")
     capex_to_dep: Optional[float] = None
-    cf_dates = sorted(cf_q.keys())
-    if len(cf_dates) >= 4:
-        last4_cf = cf_dates[-4:]
-        capex4 = [
-            _find_metric_value(
-                cf_q[d],
-                exact_types=("AcquisitionOfPropertyPlantAndEquipment", "CapitalExpenditure"),
-            )
-            for d in last4_cf
-        ]
-        dep4 = [
-            _find_metric_value(cf_q[d], exact_types=("Depreciation", "DepreciationAndAmortization"))
-            for d in last4_cf
-        ]
-        if all(x is not None for x in capex4) and all(x is not None for x in dep4):
-            tot_capex = sum(abs(x) for x in capex4 if x is not None)
-            tot_dep = sum(abs(x) for x in dep4 if x is not None)
-            ratio_cd = safe_div(tot_capex, tot_dep)
-            if ratio_cd is not None:
-                capex_to_dep = round(ratio_cd, 2)
+    if ttm.get("ttmCapex") is not None and ttm.get("ttmDepreciation") is not None:
+        ratio_cd = safe_div(ttm["ttmCapex"], ttm["ttmDepreciation"])
+        if ratio_cd is not None:
+            capex_to_dep = round(ratio_cd, 2)
 
     # 3. 5–7 年 Damodaran 常態化 EV/EBIT 與跨週期體質
     win_years = full_years[-7:]

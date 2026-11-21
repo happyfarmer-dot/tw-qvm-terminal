@@ -263,6 +263,17 @@ class HealthQuarterlyChartPointModel(CamelModel):
     dio: Optional[float] = None
 
 
+class HealthPeRiverPricesModel(CamelModel):
+    ttmEps: Optional[float] = None
+    p20Pe: Optional[float] = None
+    p50Pe: Optional[float] = None
+    p80Pe: Optional[float] = None
+    cheapPrice: Optional[float] = None
+    fairPrice: Optional[float] = None
+    expensivePrice: Optional[float] = None
+    currentStatusLabel: Optional[str] = None
+
+
 class HealthValuationBandSummaryModel(CamelModel):
     metricLabel: str
     currentValue: Optional[float] = None
@@ -273,6 +284,7 @@ class HealthValuationBandSummaryModel(CamelModel):
     p80Val: Optional[float] = None
     maxVal: Optional[float] = None
     positionComment: str
+    peRiver: Optional[HealthPeRiverPricesModel] = None
 
 
 class HealthChartSeriesModel(CamelModel):

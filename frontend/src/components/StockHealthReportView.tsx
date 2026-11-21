@@ -567,52 +567,116 @@ export const StockHealthReportView: React.FC<StockHealthReportViewProps> = ({
           </div>
         )}
 
-        {/* 歷史股價淨值比區間摘要尺 */}
-        <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-4 space-y-2.5 print-subcard">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="text-sm font-bold text-slate-100 print-text-primary">
-              {valBand.metricLabel}
-            </span>
-            <span className="text-xs font-mono tabular-nums text-cyan-300 print-text-primary">
-              目前淨值比：{valBand.currentValue !== null ? `${valBand.currentValue.toFixed(2)} 倍` : '待確認'}
-              {valBand.percentile5to7Y !== null && `（歷史 ${valBand.percentile5to7Y.toFixed(0)}% 分位）`}
-            </span>
-          </div>
+        {/* 歷史估值河流雙對照：近 5 年本益比（P/E）三價位 ＋ 近 5–7 年股價淨值比（P/B）區間 */}
+        <div
+          className={`grid grid-cols-1 ${
+            valBand.peRiver && valBand.peRiver.cheapPrice !== null ? 'lg:grid-cols-2' : ''
+          } gap-4`}
+        >
+          {valBand.peRiver && valBand.peRiver.cheapPrice !== null && (
+            <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-4 space-y-3 print-subcard">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-bold text-slate-100 print-text-primary">
+                  近 5 年歷史本益比（P/E）河流三價位對照
+                </span>
+                <span className="text-xs font-mono tabular-nums text-cyan-300 print-text-primary">
+                  近四季合計 EPS：{valBand.peRiver.ttmEps?.toFixed(2)} 元｜目前收盤：{formatPriceTwd(activeStock.price)}
+                </span>
+              </div>
 
-          {valBand.minVal !== null && valBand.maxVal !== null && (
-            <div className="grid grid-cols-5 gap-2 text-center text-xs font-mono tabular-nums pt-1">
-              <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
-                <div className="text-[11px] text-slate-400 print-text-muted">歷史最低</div>
-                <div className="text-emerald-300 font-bold print-text-primary">{valBand.minVal.toFixed(2)}x</div>
-              </div>
-              <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
-                <div className="text-[11px] text-slate-400 print-text-muted">便宜線 (20%)</div>
-                <div className="text-emerald-200 font-bold print-text-primary">
-                  {valBand.p20Val !== null ? `${valBand.p20Val.toFixed(2)}x` : '-'}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 text-center font-mono tabular-nums pt-0.5">
+                <div className="p-3 rounded-xl bg-emerald-950/35 border border-emerald-500/40 space-y-1 print-card">
+                  <div className="text-[11px] font-semibold text-emerald-300 print-text-secondary">
+                    便宜參考價（{valBand.peRiver.p20Pe}倍）
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-emerald-200 print-text-primary">
+                    {formatPriceTwd(valBand.peRiver.cheapPrice)}
+                  </div>
+                  <div className="text-[10px] text-emerald-300/80 print-text-muted">
+                    歷史 20% 低位便宜區
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-cyan-950/35 border border-cyan-500/40 space-y-1 print-card">
+                  <div className="text-[11px] font-semibold text-cyan-300 print-text-secondary">
+                    合理中樞價（{valBand.peRiver.p50Pe}倍）
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-cyan-200 print-text-primary">
+                    {formatPriceTwd(valBand.peRiver.fairPrice)}
+                  </div>
+                  <div className="text-[10px] text-cyan-300/80 print-text-muted">
+                    歷史 50% 中位合理價
+                  </div>
+                </div>
+
+                <div className="p-3 rounded-xl bg-amber-950/35 border border-amber-500/40 space-y-1 print-card">
+                  <div className="text-[11px] font-semibold text-amber-300 print-text-secondary">
+                    昂貴警戒價（{valBand.peRiver.p80Pe}倍）
+                  </div>
+                  <div className="text-base sm:text-lg font-black text-amber-200 print-text-primary">
+                    {formatPriceTwd(valBand.peRiver.expensivePrice)}
+                  </div>
+                  <div className="text-[10px] text-amber-300/80 print-text-muted">
+                    歷史 80% 高位警戒線
+                  </div>
                 </div>
               </div>
-              <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
-                <div className="text-[11px] text-slate-400 print-text-muted">歷史中位 (50%)</div>
-                <div className="text-cyan-300 font-bold print-text-primary">
-                  {valBand.p50Val !== null ? `${valBand.p50Val.toFixed(2)}x` : '-'}
-                </div>
-              </div>
-              <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
-                <div className="text-[11px] text-slate-400 print-text-muted">偏貴線 (80%)</div>
-                <div className="text-amber-300 font-bold print-text-primary">
-                  {valBand.p80Val !== null ? `${valBand.p80Val.toFixed(2)}x` : '-'}
-                </div>
-              </div>
-              <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
-                <div className="text-[11px] text-slate-400 print-text-muted">歷史最高</div>
-                <div className="text-rose-300 font-bold print-text-primary">{valBand.maxVal.toFixed(2)}x</div>
-              </div>
+
+              <p className="text-xs sm:text-sm text-slate-300 print-text-secondary">
+                目前股價對照結論：<strong className="text-cyan-300 print-text-primary">{valBand.peRiver.currentStatusLabel ?? '歷史合理區間'}</strong>
+              </p>
             </div>
           )}
 
-          <p className="text-xs sm:text-sm text-slate-300 print-text-secondary">
-            {valBand.positionComment}
-          </p>
+          {/* 歷史股價淨值比區間摘要尺 */}
+          <div className="rounded-xl bg-slate-900/80 border border-slate-800 p-4 space-y-2.5 print-subcard flex flex-col justify-between">
+            <div className="space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="text-sm font-bold text-slate-100 print-text-primary">
+                  {valBand.metricLabel}
+                </span>
+                <span className="text-xs font-mono tabular-nums text-cyan-300 print-text-primary">
+                  目前淨值比：{valBand.currentValue !== null ? `${valBand.currentValue.toFixed(2)} 倍` : '待確認'}
+                  {valBand.percentile5to7Y !== null && `（歷史 ${valBand.percentile5to7Y.toFixed(0)}% 分位）`}
+                </span>
+              </div>
+
+              {valBand.minVal !== null && valBand.maxVal !== null && (
+                <div className="grid grid-cols-5 gap-2 text-center text-xs font-mono tabular-nums pt-1">
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
+                    <div className="text-[11px] text-slate-400 print-text-muted">歷史最低</div>
+                    <div className="text-emerald-300 font-bold print-text-primary">{valBand.minVal.toFixed(2)}倍</div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
+                    <div className="text-[11px] text-slate-400 print-text-muted">便宜線 (20%)</div>
+                    <div className="text-emerald-200 font-bold print-text-primary">
+                      {valBand.p20Val !== null ? `${valBand.p20Val.toFixed(2)}倍` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
+                    <div className="text-[11px] text-slate-400 print-text-muted">歷史中位 (50%)</div>
+                    <div className="text-cyan-300 font-bold print-text-primary">
+                      {valBand.p50Val !== null ? `${valBand.p50Val.toFixed(2)}倍` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
+                    <div className="text-[11px] text-slate-400 print-text-muted">偏貴線 (80%)</div>
+                    <div className="text-amber-300 font-bold print-text-primary">
+                      {valBand.p80Val !== null ? `${valBand.p80Val.toFixed(2)}倍` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-950/80 border border-slate-800 print-subcard">
+                    <div className="text-[11px] text-slate-400 print-text-muted">歷史最高</div>
+                    <div className="text-rose-300 font-bold print-text-primary">{valBand.maxVal.toFixed(2)}倍</div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-300 print-text-secondary">
+              {valBand.positionComment}
+            </p>
+          </div>
         </div>
       </section>
 

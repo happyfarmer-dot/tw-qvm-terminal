@@ -11,6 +11,8 @@ from pipeline.cache_manager import PipelineCacheManager
 from pipeline.calculators.adj_price import compute_free_adjusted_prices
 from pipeline.calculators.cyclical_metrics import (
     compute_cyclical_metrics,
+    compute_pe_river_5y,
+    normalize_tw_sector_name,
     recommend_valuation_profile,
 )
 from pipeline.calculators.financial_ratios import compute_all_financial_ratios
@@ -131,18 +133,19 @@ def build_stock_snapshot(
         or (latest_info.get("stock_name") if latest_info else None)
         or sym
     )
-    sector = (
+    raw_sector = (
         official_snap.get("sector")
         or (latest_info.get("industry_category") if latest_info else None)
         or "未分類"
     )
+    sector = normalize_tw_sector_name(raw_sector)
     market_type_raw = (
         (latest_info.get("type") if latest_info else None)
         or official_snap.get("marketType")
         or "twse"
     )
     market_type: str = "tpex" if str(market_type_raw).lower() == "tpex" else "twse"
-    recommended_profile = recommend_valuation_profile(sector, sym, name)
+    recommended_profile = recommend_valuation_profile(raw_sector, sym, name)
     is_financial = recommended_profile in ("financial_bank", "financial_life_fhc")
 
     price_df, price_warnings = compute_free_adjusted_prices(price_rows, div_res_rows)
@@ -321,6 +324,15 @@ def build_stock_snapshot(
 
     completeness_pct = round((non_null_count / len(check_map)) * 100.0, 1)
 
+    pe_river_data = compute_pe_river_5y(
+        price_df=price_df,
+        income_rows=income_rows,
+        balance_rows=balance_rows,
+        cashflow_rows=cashflow_rows,
+        latest_price=tech["price"],
+        trailing_pe_override=official_snap.get("trailingPe"),
+    )
+
     report_date_str = str(tech.get("reportDate") or taipei_now_iso[:10])
     health_report = build_stock_health_report(
         sym=sym,
@@ -331,8 +343,12 @@ def build_stock_snapshot(
         price=tech["price"],
         high_20d=tech.get("high20d"),
         atr20=tech["atr20"],
+        ma20=tech.get("ma20"),
         ma120=tech["ma120"],
         ma200=tech["ma200"],
+        ret20d_pct=tech.get("ret20dPct"),
+        rsi14=tech.get("rsi14"),
+        pe_river_data=pe_river_data,
         sz=stage_zero_metrics,
         ratios=ratios,
         cyc=cyclical_model,

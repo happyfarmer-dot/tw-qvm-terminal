@@ -566,7 +566,7 @@ describe('Fin-QVM v1.0 銀行與金控特化評分模組測試', () => {
     expect(computeFinancialFinalScore({ sFQ: 40, sFV: 40, sFM: 20 }, 'NORMAL')).toBe(100);
   });
 
-  it('14. 個股深度健檢報告書產生器與白話文字匯出測試', async () => {
+  it('14. 個股深度健檢報告書產生器、防禦體制 30%+70%=100% 動態比例、本益比三價位與白話文字匯出測試', async () => {
     const { ensureStockHealthReport, formatHealthReportPlainText } = await import(
       '../healthReportGenerator'
     );
@@ -579,14 +579,25 @@ describe('Fin-QVM v1.0 銀行與金控特化評分模組測試', () => {
     expect(report.dimensions.length).toBe(3);
     expect(report.actionPlan.buyStrategy.canBuyNow).toBe(true);
     expect(report.actionPlan.buyStrategy.firstTranchePct).toBe(50);
+    expect(report.actionPlan.buyStrategy.secondTrancheCondition).toContain('再投入剩餘 50% 資金');
     expect(report.actionPlan.sellAndDefenseStrategy.stopLossPrice).toBeGreaterThan(0);
 
-    const defReport = ensureStockHealthReport(tsmc, 'DEFENSIVE', '2026-11-20');
+    // 驗證近 5 年本益比河流三價位（便宜參考價 < 合理中樞價 < 昂貴警戒價）
+    const peRiver = report.chartSeries.valuationBand.peRiver;
+    expect(peRiver).not.toBeNull();
+    expect(peRiver!.cheapPrice!).toBeLessThan(peRiver!.fairPrice!);
+    expect(peRiver!.fairPrice!).toBeLessThan(peRiver!.expensivePrice!);
+
+    // 驗證切換至防禦模式時，首筆 30% + 第二批 70% = 100%（即便傳入已含 healthReport 的快照也能動態同步）
+    const withPrebuilt = { ...tsmc, healthReport: report };
+    const defReport = ensureStockHealthReport(withPrebuilt, 'DEFENSIVE', '2026-11-20');
     expect(defReport.actionPlan.buyStrategy.firstTranchePct).toBe(30);
+    expect(defReport.actionPlan.buyStrategy.secondTrancheCondition).toContain('再投入剩餘 70% 資金');
 
     const plainText = formatHealthReportPlainText(tsmc, report);
     expect(plainText).toContain('《台股個股深度健檢報告書》');
     expect(plainText).toContain('2330 台積電');
+    expect(plainText).toContain('近 5 年本益比河流三價位');
     expect(plainText).toContain('看錯停損參考價');
   });
 });

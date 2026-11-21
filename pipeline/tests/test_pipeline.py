@@ -351,3 +351,199 @@ def test_health_report_generation_for_all_profiles() -> None:
         assert report.actionPlan.sellAndDefenseStrategy.trailingStopPrice == expected_trail
 
 
+def test_ytd_cashflow_no_double_counting_and_ttm_formula() -> None:
+    """
+    驗證 FinMind 累計至該季 (YTD) 現金流量表不會被重複加總 4 次，
+    且 TTM 公式嚴格遵循：最新累計季報 + 前一年度年報 - 前一年同季累計季報。
+    """
+    from pipeline.calculators.financial_ratios import (
+        compute_all_financial_ratios,
+        compute_ttm_metrics,
+        extract_annual_snapshots,
+    )
+
+    # 模擬 2023-2025 每年 4 季 YTD 累計營業現金流（Q1=100, H1=200, 9M=300, FY=400）
+    cashflow_rows = []
+    income_rows = []
+    balance_rows = []
+    for yr in (2023, 2024, 2025):
+        for q_date, ytd_ocf in (
+            (f"{yr}-03-31", 100.0),
+            (f"{yr}-06-30", 200.0),
+            (f"{yr}-09-30", 300.0),
+            (f"{yr}-12-31", 400.0),
+        ):
+            cashflow_rows.append(
+                {"date": q_date, "type": "CashFlowsFromOperatingActivities", "value": ytd_ocf}
+            )
+            cashflow_rows.append(
+                {"date": q_date, "type": "PropertyAndPlantAndEquipment", "value": -ytd_ocf * 0.25}
+            )
+            income_rows.append({"date": q_date, "type": "Revenue", "value": 250.0})
+            income_rows.append({"date": q_date, "type": "GrossProfit", "value": 80.0})
+            income_rows.append({"date": q_date, "type": "OperatingIncome", "value": 50.0})
+            income_rows.append({"date": q_date, "type": "IncomeAfterTaxes", "value": 40.0})
+            income_rows.append({"date": q_date, "type": "EPS", "value": 1.0})
+
+        balance_rows.extend(
+            [
+                {"date": f"{yr}-12-31", "type": "TotalAssets", "value": 2000.0},
+                {"date": f"{yr}-12-31", "type": "CurrentAssets", "value": 800.0},
+                {"date": f"{yr}-12-31", "type": "CurrentLiabilities", "value": 400.0},
+                {"date": f"{yr}-12-31", "type": "LongtermBorrowings", "value": 300.0},
+                {"date": f"{yr}-12-31", "type": "Equity", "value": 1000.0},
+                {"date": f"{yr}-12-31", "type": "OrdinaryShare", "value": 400.0},
+            ]
+        )
+
+    # 加入 2026 前三季 (2026-09-30 YTD OCF = 360.0)
+    cashflow_rows.append(
+        {"date": "2026-09-30", "type": "CashFlowsFromOperatingActivities", "value": 360.0}
+    )
+    income_rows.append({"date": "2026-09-30", "type": "EPS", "value": 1.5})
+
+    snaps = extract_annual_snapshots(income_rows, balance_rows, cashflow_rows)
+    yr_2025 = next(s for s in snaps if s["year"] == 2025.0)
+    # 2025 全年 OCF 必須等於 -12-31 年報列的 400.0，絕不可為 100+200+300+400 = 1000.0
+    assert yr_2025["ocf"] == 400.0
+
+    # TTM OCF = 2026Q3累計(360) + 2025年報(400) - 2025Q3累計(300) = 460.0
+    ttm = compute_ttm_metrics(income_rows, cashflow_rows)
+    assert ttm["ttmOcf"] == 460.0
+
+    ratios = compute_all_financial_ratios(
+        income_rows=income_rows,
+        balance_rows=balance_rows,
+        cashflow_rows=cashflow_rows,
+        revenue_rows=[],
+        dividend_rows=[],
+        latest_price=50.0,
+    )
+    # 近 3 個完整會計年度 (2023, 2024, 2025) 累計 OCF = 400 * 3 = 1200.0
+    assert ratios["cumulative3yOCF"] == 1200.0
+    assert ratios["piotroskiRaw"] is not None
+
+
+def test_shipping_and_sector_code_cyclical_classification() -> None:
+    """
+    驗證證交所/櫃買產業代碼 '15'（航運業，如 2618 長榮航）、'10'（鋼鐵）、'03'/'13'（塑膠）、'26'（光電）
+    自動套用強景氣循環模型。
+    """
+    from pipeline.calculators.cyclical_metrics import (
+        normalize_tw_sector_name,
+        recommend_valuation_profile,
+    )
+
+    assert normalize_tw_sector_name("15") == "航運業"
+    assert recommend_valuation_profile("15", "2618", "長榮航") == "cyclical_heavy_asset"
+    assert recommend_valuation_profile("15", "2603", "長榮") == "cyclical_heavy_asset"
+    assert recommend_valuation_profile("10", "2002", "中鋼") == "cyclical_heavy_asset"
+    assert recommend_valuation_profile("03", "1301", "台塑") == "cyclical_heavy_asset"
+    assert recommend_valuation_profile("24", "3131", "弘塑") == "cyclical_inventory_order"
+    assert recommend_valuation_profile("17", "2881", "富邦金") == "financial_life_fhc"
+    assert recommend_valuation_profile("17", "2886", "兆豐金") == "financial_bank"
+
+
+def test_5y_pe_river_and_short_term_overheat_pullback_filter() -> None:
+    """
+    驗證：
+    1. 近 5 年本益比河流三價位（便宜價 / 合理中樞價 / 昂貴警戒價）計算
+    2. 短線過熱防追高濾網（A 級且近 20 日漲幅 ≥ 12% 或 14 日 RSI ≥ 70 時，切換為月線 ±1.5% 低接區間）
+    3. 防禦模式下首筆 30% + 第二批 70% = 100%，且報告無任何未渲染的 $ LaTeX 語法
+    """
+    import pandas as pd
+    from pipeline.calculators.cyclical_metrics import compute_pe_river_5y
+    from pipeline.calculators.health_report_builder import build_stock_health_report
+    from pipeline.schemas import (
+        CyclicalMetricsModel,
+        FinancialRatiosModel,
+        StageZeroMetricsModel,
+    )
+
+    price_rows = [
+        {"date": f"2024-{(i // 28) + 1:02d}-{(i % 28) + 1:02d}", "close": 100.0 + i * 0.5, "adj_close": 100.0 + i * 0.5}
+        for i in range(120)
+    ]
+    price_df = pd.DataFrame(price_rows)
+    income_rows = [
+        {"date": "2023-12-31", "type": "EPS", "value": 8.0},
+        {"date": "2024-12-31", "type": "EPS", "value": 10.0},
+        {"date": "2025-12-31", "type": "EPS", "value": 12.0},
+    ]
+    pe_river = compute_pe_river_5y(
+        price_df=price_df,
+        income_rows=income_rows,
+        balance_rows=[],
+        cashflow_rows=[],
+        latest_price=180.0,
+        trailing_pe_override=15.0,
+    )
+    assert pe_river["ttmEps"] == 12.0
+    assert pe_river["cheapPrice"] is not None
+    assert pe_river["fairPrice"] is not None
+    assert pe_river["expensivePrice"] is not None
+    assert pe_river["cheapPrice"] < pe_river["fairPrice"] < pe_river["expensivePrice"]
+
+    sz = StageZeroMetricsModel(
+        isManufacturing=True,
+        avgDailyTurnover20dTWD=2_000_000_000,
+        isDispositionStock=False,
+        directorPledgeRatio=3.0,
+        cumulative3yOCF=90_000_000_000,
+        consecutive2qArOrInvBloat=False,
+        beneishMScore=-2.5,
+        altmanZScore=5.0,
+    )
+    ratios = FinancialRatiosModel(
+        roic3yAvgPct=25.0,
+        gpaPct=35.0,
+        ocfToNi3yPct=120.0,
+        piotroskiRaw=8,
+        evToEbitda=11.0,
+        fcfYieldPct=6.0,
+        trailingPe=15.0,
+        dividendYieldPct=4.0,
+        consecutive5yDividend=True,
+        mom12m1mSharpe=1.2,
+        rev3mCumYoYPct=22.0,
+        rev12mCumYoYPct=15.0,
+        trendVsMa200Pct=14.0,
+    )
+
+    report = build_stock_health_report(
+        sym="2330",
+        name="台積電",
+        sector="半導體業",
+        profile="standard",
+        report_date="2026-11-20",
+        price=1050.0,
+        high_20d=1060.0,
+        atr20=25.0,
+        ma20=980.0,
+        ma120=920.0,
+        ma200=880.0,
+        ret20d_pct=15.4,  # >= 12% 觸發短線過熱
+        rsi14=74.2,       # >= 70 觸發短線過熱
+        pe_river_data=pe_river,
+        sz=sz,
+        ratios=ratios,
+        cyc=CyclicalMetricsModel(),
+        fin_sec=None,
+        income_rows=income_rows,
+        regime="DEFENSIVE",
+    )
+
+    assert report.executiveSummary.verdictBadge == "A 級｜體質優秀，短線過熱等拉回"
+    # 檢查買進區間是否切換為 20 日月線 (980 ± 1.5% -> 965.3 ~ 994.7)
+    assert "965.3 ~ 994.7" in report.actionPlan.buyStrategy.entryZoneText
+    assert "月線" in report.actionPlan.buyStrategy.entryZoneText
+    # 防禦模式首筆 30%，第二批必須是 70%（30% + 70% = 100%）
+    assert report.actionPlan.buyStrategy.firstTranchePct == 30
+    assert "再投入剩餘 70% 資金完成建倉" in report.actionPlan.buyStrategy.secondTrancheCondition
+    # 確認無任何未渲染的 $>=$ 或 $<=$
+    dump_str = report.model_dump_json()
+    assert ">=" not in dump_str
+    assert "<=" not in dump_str
+
+
+

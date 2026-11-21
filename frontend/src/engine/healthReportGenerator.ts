@@ -25,7 +25,7 @@ function fmtMoneyYi(valTwd: number | null | undefined): string {
 }
 
 export function getProfileDisplayLabel(profile: ValuationProfile): string {
-  if (profile === 'cyclical_heavy_asset') return '強景氣循環（重資產／航運面板記憶體）';
+  if (profile === 'cyclical_heavy_asset') return '強景氣循環（重資產型）';
   if (profile === 'cyclical_inventory_order') return '強景氣循環（存貨與訂單領先型）';
   if (profile === 'financial_bank') return '銀行與官股金控穩健收息型';
   if (profile === 'financial_life_fhc') return '壽險雙引擎金控型';
@@ -40,7 +40,7 @@ function gradeTextFromPct(pct: number): string {
 }
 
 /**
- * 若 candidate 已由 Python 管線預先產出 healthReport，則直接回傳（並依當前市場體制微調首倉比例）；
+ * 若 candidate 已由 Python 管線預先產出 healthReport，則直接回傳（並依當前市場體制動態同步首筆與第二批加碼比例，確保加總嚴格等於 100%）；
  * 若為 CSV 匯入或舊版快取缺少 healthReport，則即時自動生成結構一致的白話《個股深度健檢報告書》。
  */
 export function ensureStockHealthReport(
@@ -50,8 +50,17 @@ export function ensureStockHealthReport(
 ): HealthReport {
   if (stock.healthReport) {
     const canBuy = stock.healthReport.actionPlan.buyStrategy.canBuyNow;
-    const expectedTranche = canBuy ? (regime === 'DEFENSIVE' ? 30 : 50) : 0;
-    if (stock.healthReport.actionPlan.buyStrategy.firstTranchePct === expectedTranche) {
+    const expectedFirst = canBuy ? (regime === 'DEFENSIVE' ? 30 : 50) : 0;
+    const expectedSecond = canBuy ? 100 - expectedFirst : 0;
+    const prevCond = stock.healthReport.actionPlan.buyStrategy.secondTrancheCondition;
+    const updatedCond = canBuy
+      ? prevCond.replace(/再投入剩餘\s*\d+%\s*資金/g, `再投入剩餘 ${expectedSecond}% 資金`)
+      : prevCond;
+
+    if (
+      stock.healthReport.actionPlan.buyStrategy.firstTranchePct === expectedFirst &&
+      updatedCond === prevCond
+    ) {
       return stock.healthReport;
     }
     return {
@@ -60,7 +69,8 @@ export function ensureStockHealthReport(
         ...stock.healthReport.actionPlan,
         buyStrategy: {
           ...stock.healthReport.actionPlan.buyStrategy,
-          firstTranchePct: expectedTranche,
+          firstTranchePct: expectedFirst,
+          secondTrancheCondition: updatedCond,
         },
       },
     };
@@ -147,7 +157,7 @@ export function ensureStockHealthReport(
       itemName: '資本適足與逾放比提醒',
       displayValue: '公開觀測站季報核對',
       status: 'unknown',
-      plainExplanation: '建議每季至公開資訊觀測站確認金控資本適足率与銀行逾放比。',
+      plainExplanation: '建議每季至公開資訊觀測站確認金控資本適足率（CAR ≥ 105%）與銀行逾放比（NPL ≤ 1%）。',
     });
   } else {
     const ocf = isCyc ? (sz.cumulative5yOCF ?? sz.cumulative3yOCF) : sz.cumulative3yOCF;
@@ -207,28 +217,28 @@ export function ensureStockHealthReport(
     {
       label: '近 3 年平均投入資本回報率（ROIC）',
       valueText: fmtNum(stock.roicPct, 1, '%'),
-      benchmarkText: '優質門檻 >= 12%',
+      benchmarkText: '優質門檻 ≥ 12%（≥ 15% 頂尖護城河）',
       status: stock.roicPct >= 15 ? '優秀' : stock.roicPct >= 10 ? '穩健' : '警訊',
       comment: '衡量公司每投入 100 元資本能創造多少本業稅後利潤。',
     },
     {
       label: '資產毛利率（毛利／總資產）',
       valueText: fmtNum(stock.gpaPct, 1, '%'),
-      benchmarkText: '優質門檻 >= 20%',
+      benchmarkText: '優質門檻 ≥ 20%（≥ 30% 高定價權）',
       status: stock.gpaPct >= 28 ? '優秀' : stock.gpaPct >= 18 ? '穩健' : '警訊',
       comment: '結合產品毛利率與資產運用效率，越高代表競爭力越強。',
     },
     {
       label: '近 3 年盈餘現金轉換率（營業現金流／淨利）',
       valueText: fmtNum(stock.ocfToNiPct, 0, '%'),
-      benchmarkText: '健康標準 >= 90%',
+      benchmarkText: '健康標準 ≥ 90%（≥ 100% 含金量極高）',
       status: stock.ocfToNiPct >= 100 ? '優秀' : stock.ocfToNiPct >= 80 ? '穩健' : '警訊',
       comment: '檢驗帳面賺到的淨利有多少比例真正變成現金流入公司。',
     },
     {
       label: '財報財務強度（F-Score 9 項綜合健檢）',
       valueText: `${stock.piotroskiRaw} / 9 分`,
-      benchmarkText: '穩健標準 >= 6 分',
+      benchmarkText: '穩健標準 ≥ 6 分（≥ 7 分體質極強）',
       status: stock.piotroskiRaw >= 7 ? '優秀' : stock.piotroskiRaw >= 5 ? '穩健' : '警訊',
       comment: '綜合檢視獲利能力、負債增減、流動性與毛利率是否較去年改善。',
     },
@@ -238,14 +248,14 @@ export function ensureStockHealthReport(
     {
       label: '企業價值倍數（EV/EBITDA）',
       valueText: stock.evToEbitda > 0 ? fmtNum(stock.evToEbitda, 1, ' 倍') : '待確認',
-      benchmarkText: '合理區間 <= 16 倍',
+      benchmarkText: '合理區間 ≤ 16 倍（≤ 12 倍物美價廉）',
       status: stock.evToEbitda > 0 && stock.evToEbitda <= 12 ? '優秀' : stock.evToEbitda <= 20 ? '穩健' : '偏貴',
       comment: '把市值加上負債、扣除現金後對比本業現金獲利，反映收購回本年數。',
     },
     {
       label: '自由現金流殖利率',
       valueText: fmtNum(stock.fcfYieldPct, 1, '%'),
-      benchmarkText: '穩健標準 >= 3.5%',
+      benchmarkText: '穩健標準 ≥ 3.5%（≥ 5.5% 現金回報極佳）',
       status: stock.fcfYieldPct >= 5.5 ? '優秀' : stock.fcfYieldPct >= 2.5 ? '穩健' : '偏貴',
       comment: '公司扣除擴廠資本支出後，每年真正可自由支配的現金報酬率。',
     },
@@ -270,21 +280,21 @@ export function ensureStockHealthReport(
     {
       label: '近 12 個月累計營收年增率',
       valueText: fmtNum(stock.rev12mCumYoYPct, 1, '%'),
-      benchmarkText: '全年累計營收年增率 >= 0%',
+      benchmarkText: '全年累計營收年增率 ≥ 0%',
       status: stock.rev12mCumYoYPct >= 10 ? '優秀' : stock.rev12mCumYoYPct >= 0 ? '穩健' : '警訊',
       comment: '對比近 3 月與近 12 月營收年增率，可看出業績是否加速成長。',
     },
     {
       label: '過去一年風險調整後股價動能表現',
       valueText: fmtNum(stock.mom12m1mSharpe, 2, ''),
-      benchmarkText: '動能值 >= 0.5 代表強於大盤',
+      benchmarkText: '動能值 ≥ 0.5 代表強於大盤',
       status: stock.mom12m1mSharpe >= 1.0 ? '優秀' : stock.mom12m1mSharpe >= 0.3 ? '穩健' : '警訊',
       comment: '衡量過去一年扣除劇烈波動後的穩健上漲趨勢強度。',
     },
     {
       label: '收盤價與 200 日長期均線位置（年線乖離）',
       valueText: `年線 ${fmtNum(stock.ma200, 1, ' 元')}（乖離 ${fmtNum(bias200, 1, '%')}）`,
-      benchmarkText: '股價站穩年線之上',
+      benchmarkText: '股價站穩年線之上（乖離 ≥ 0%）',
       status: bias200 >= 0 && bias200 <= 22 ? '優秀' : bias200 > 32 ? '偏貴' : '警訊',
       comment: '200 日均線（年線）代表長期生命線，站穩年線之上代表長線多頭格局。',
     },
@@ -345,12 +355,21 @@ export function ensureStockHealthReport(
 
   const canBuy = grade === 'A' || grade === 'B';
   const firstTranchePct = canBuy ? (regime === 'DEFENSIVE' ? 30 : 50) : 0;
+  const secondTranchePct = canBuy ? 100 - firstTranchePct : 0;
   const atr = stock.atr20 > 0 ? stock.atr20 : Math.max(0.5, Number((stock.price * 0.025).toFixed(2)));
   const stopLoss = Number(Math.max(0.01, stock.price - 2.5 * atr).toFixed(2));
   const trailMult = isCyc ? 2.0 : 3.0;
   const trailingStop = Number(Math.max(0.01, stock.price - trailMult * atr).toFixed(2));
   const lowEntry = Number(Math.max(0.01, stock.price - 0.8 * atr).toFixed(1));
   const highEntry = Number((stock.price + 0.3 * atr).toFixed(1));
+
+  const ttmEpsEst =
+    !isCyc && stock.trailingPe > 0 && stock.price > 0
+      ? Number((stock.price / stock.trailingPe).toFixed(2))
+      : null;
+  const p50Pe = stock.trailingPe > 0 ? Number(stock.trailingPe.toFixed(1)) : 16.0;
+  const p20Pe = Number(Math.max(8.0, p50Pe * 0.78).toFixed(1));
+  const p80Pe = Number((p50Pe * 1.25).toFixed(1));
 
   return {
     executiveSummary: {
@@ -376,7 +395,7 @@ export function ensureStockHealthReport(
           ? `NT$ ${lowEntry.toLocaleString()} ~ ${highEntry.toLocaleString()} 之間分批布局，避開開盤前 15 分鐘急拉及漲停鎖死日。`
           : '目前未達安全買進標準，建議空手觀望。',
         secondTrancheCondition: canBuy
-          ? `買進滿 1 個月或下次月營收公布後，年增率維持正成長且收盤未跌破 NT$ ${stopLoss.toLocaleString()} 停損線，再投入剩餘 ${100 - firstTranchePct}% 資金。`
+          ? `買進滿 1 個月或下次月營收公布後，年增率維持正成長且收盤未跌破 NT$ ${stopLoss.toLocaleString()} 停損線，再投入剩餘 ${secondTranchePct}% 資金完成建倉。`
           : '待綜合評級重回 B 級以上且股價站回年線後，再重新評估建倉。',
       },
       sellAndDefenseStrategy: {
@@ -407,6 +426,19 @@ export function ensureStockHealthReport(
           cyc.pbPercentile5to7Y !== null
             ? `目前股價淨值比處於近 5–7 年歷史 ${cyc.pbPercentile5to7Y.toFixed(0)}% 分位。`
             : '歷史估值區間資料整理中。',
+        peRiver:
+          ttmEpsEst !== null
+            ? {
+                ttmEps: ttmEpsEst,
+                p20Pe,
+                p50Pe,
+                p80Pe,
+                cheapPrice: Number((ttmEpsEst * p20Pe).toFixed(1)),
+                fairPrice: Number((ttmEpsEst * p50Pe).toFixed(1)),
+                expensivePrice: Number((ttmEpsEst * p80Pe).toFixed(1)),
+                currentStatusLabel: '歷史合理區間',
+              }
+            : null,
       },
     },
   };
@@ -416,9 +448,10 @@ export function ensureStockHealthReport(
  * 產出適合貼到 LINE / Telegram / 記事本的精簡純文字戰報摘要
  */
 export function formatHealthReportPlainText(stock: TwStockCandidate, report: HealthReport): string {
-  const { executiveSummary: ex, safetyCheckup, dimensions, actionPlan } = report;
+  const { executiveSummary: ex, safetyCheckup, dimensions, actionPlan, chartSeries } = report;
   const sell = actionPlan.sellAndDefenseStrategy;
   const buy = actionPlan.buyStrategy;
+  const peRiver = chartSeries.valuationBand.peRiver;
 
   const safetyLines = safetyCheckup.map((s) => {
     const icon = s.status === 'pass' ? '🟢 通過' : s.status === 'warn' ? '🟡 留意' : s.status === 'fail' ? '🔴 高危' : '⚪ 待確認';
@@ -428,6 +461,17 @@ export function formatHealthReportPlainText(stock: TwStockCandidate, report: Hea
   const dimLines = dimensions.map(
     (d) => `• ${d.title}：${d.scorePct.toFixed(0)} 分（${d.gradeText}）— ${d.summaryComment}`
   );
+
+  const peLines =
+    peRiver && peRiver.cheapPrice !== null && peRiver.fairPrice !== null && peRiver.expensivePrice !== null
+      ? [
+          `----------------------------------------`,
+          `【近 5 年本益比河流三價位（近四季 EPS：${peRiver.ttmEps} 元）】`,
+          `• 便宜參考價（P20）：NT$ ${peRiver.cheapPrice.toLocaleString()}（${peRiver.p20Pe} 倍）`,
+          `• 合理中樞價（P50）：NT$ ${peRiver.fairPrice.toLocaleString()}（${peRiver.p50Pe} 倍）`,
+          `• 昂貴警戒價（P80）：NT$ ${peRiver.expensivePrice.toLocaleString()}（${peRiver.p80Pe} 倍）`,
+        ]
+      : [];
 
   return [
     `📊 《台股個股深度健檢報告書》`,
@@ -444,6 +488,7 @@ export function formatHealthReportPlainText(stock: TwStockCandidate, report: Hea
     `----------------------------------------`,
     `【二、三大核心維度評分】`,
     ...dimLines,
+    ...peLines,
     `----------------------------------------`,
     `【三、專屬買賣操作與風控價位】`,
     `• 操作立場：${actionPlan.stanceLabel}（首筆建議投入比例：${buy.firstTranchePct}%）`,

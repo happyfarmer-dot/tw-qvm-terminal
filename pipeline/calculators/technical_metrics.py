@@ -32,6 +32,9 @@ def compute_technical_metrics(df: pd.DataFrame) -> dict[str, Any]:
         "price": None,
         "reportDate": None,
         "high20d": None,
+        "ma20": None,
+        "ret20dPct": None,
+        "rsi14": None,
         "avgDailyTurnover20dTWD": None,
         "annualizedVol60dPct": None,
         "annualizedVol120dPct": None,
@@ -90,10 +93,33 @@ def compute_technical_metrics(df: pd.DataFrame) -> dict[str, Any]:
         tr = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
         atr20 = _safe_float(round(float(tr.tail(20).mean()), 2))
 
-    # 均線 50 / 120 / 200MA
+    # 均線 20 / 50 / 120 / 200MA
+    ma20 = _safe_float(round(float(raw_close.tail(20).mean()), 2)) if len(raw_close) >= 20 else latest_price
     ma50 = _safe_float(round(float(close.tail(50).mean()), 2)) if len(close) >= 50 else None
     ma120 = _safe_float(round(float(close.tail(120).mean()), 2)) if len(close) >= 120 else None
     ma200 = _safe_float(round(float(close.tail(200).mean()), 2)) if len(close) >= 200 else None
+
+    # 近 20 日漲幅 (%)
+    ret_20d_pct: Optional[float] = None
+    if len(close) >= 21:
+        p_20d_ago = float(close.iloc[-21])
+        p_now_adj = float(close.iloc[-1])
+        if p_20d_ago > 0:
+            ret_20d_pct = _safe_float(round(((p_now_adj / p_20d_ago) - 1.0) * 100.0, 2))
+
+    # 14 日 RSI
+    rsi14: Optional[float] = None
+    if len(close) >= 15:
+        delta = close.diff().dropna()
+        gains = delta.clip(lower=0.0)
+        losses = (-delta).clip(lower=0.0)
+        avg_gain = float(gains.tail(14).mean())
+        avg_loss = float(losses.tail(14).mean())
+        if avg_loss == 0:
+            rsi14 = 100.0 if avg_gain > 0 else 50.0
+        else:
+            rs = avg_gain / avg_loss
+            rsi14 = _safe_float(round(100.0 - (100.0 / (1.0 + rs)), 1))
 
     # 連續低於 200MA 天數
     days_below_200 = 0
@@ -136,6 +162,9 @@ def compute_technical_metrics(df: pd.DataFrame) -> dict[str, Any]:
         "price": latest_price,
         "reportDate": report_date,
         "high20d": high_20d,
+        "ma20": ma20,
+        "ret20dPct": ret_20d_pct,
+        "rsi14": rsi14,
         "avgDailyTurnover20dTWD": avg_turnover_20d,
         "annualizedVol60dPct": vol_60d,
         "annualizedVol120dPct": vol_120d,
