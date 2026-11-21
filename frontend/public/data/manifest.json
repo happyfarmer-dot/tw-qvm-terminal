@@ -1,26 +1,28 @@
 {
   "version": 1,
-  "status": "awaiting_first_run",
-  "updatedAtTaipei": "尚未執行首次排程",
-  "updatedAtUtc": "",
+  "status": "partial",
+  "updatedAtTaipei": "2026-11-21 09:15",
+  "updatedAtUtc": "2026-11-21T01:15:46.872482+00:00",
   "regime": {
-    "regime": "NORMAL",
+    "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
-    "indexClose": null,
-    "ma200": null,
-    "drawdown20dPct": null,
-    "annualizedVol20dPct": null,
+    "indexClose": 36033.29,
+    "ma200": 41527.34,
+    "drawdown20dPct": 23.39,
+    "annualizedVol20dPct": 48.97,
     "reasons": [
-      "尚未執行 GitHub Actions「Update Real TW Stock Data」，請至 GitHub Actions 手動觸發首次真實數據抓取。"
+      "加權指數 (36,033) 低於 200MA (41,527)",
+      "近 20 日最大回撤 23.39% (> 10%)",
+      "近 20 日年化波動率 48.97% (> 25%)"
     ]
   },
   "stats": {
     "totalWatchlist": 79,
-    "successCount": 0,
+    "successCount": 25,
     "failedCount": 0,
-    "skippedDueToQuota": 0,
+    "skippedDueToQuota": 54,
     "cacheHits": 0,
-    "finmindFetched": 0,
+    "finmindFetched": 25,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
     "finmindQuotaLimit": null
