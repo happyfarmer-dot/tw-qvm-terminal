@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   AlertOctagon,
   ArrowRight,
@@ -40,7 +40,23 @@ export const DashboardView: React.FC = () => {
     loadCandidateIntoScorecard,
   } = useTwQuantStore();
 
+  const [quickSearch, setQuickSearch] = useState('');
+
   const ranked = useMemo(() => rankBatchWithZScore(universe, regime), [universe, regime]);
+
+  const quickCards = useMemo(() => {
+    const q = quickSearch.trim().toLowerCase();
+    const list = ranked.map((r) => r.stock);
+    if (!q) return list.slice(0, 9);
+    return list
+      .filter(
+        (s) =>
+          s.symbol.toLowerCase().includes(q) ||
+          s.name.toLowerCase().includes(q) ||
+          s.sector.toLowerCase().includes(q)
+      )
+      .slice(0, 12);
+  }, [ranked, quickSearch]);
 
   const cyclicalAlerts = useMemo(() => {
     return universe
@@ -175,10 +191,10 @@ export const DashboardView: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-slate-100">
-            TW-QVM 量化總覽儀表板（真實台股數據）
+            台股穩健選股與買賣建議搜尋平台
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            {regime === 'DEFENSIVE' ? '防禦模式 (50/40/10)' : '常態模式 (40/35/25)'} ｜ {pit.label}
+            {regime === 'DEFENSIVE' ? '大盤防禦模式（首筆建議 30%）' : '大盤常態模式（首筆建議 50%）'} ｜ {pit.label}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -186,17 +202,93 @@ export const DashboardView: React.FC = () => {
             onClick={() => setActiveTab('screener')}
             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-cyan-500/15 hover:bg-cyan-500/25 text-cyan-300 border border-cyan-500/40 flex items-center gap-1.5"
           >
-            批次 Z-Score 排名
+            全清單篩選比較
             <ArrowRight className="w-3.5 h-3.5" />
           </button>
           <button
             onClick={() => setActiveTab('scorecard')}
             className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
           >
-            開啟單股健檢
+            查看個股深度健檢書
           </button>
         </div>
       </div>
+
+      {/* 主搜尋畫面：快速搜尋與精選個股卡片（點擊任一卡片直接開啟《個股深度健檢報告書》） */}
+      {universe.length > 0 && (
+        <div className="p-4 sm:p-5 rounded-2xl bg-[#0f172a] border border-slate-800 space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm sm:text-base font-bold text-slate-100">
+                🔍 點擊任一股票卡片，立即開啟《個股深度健檢報告書》
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                自動適配「標準品質成長」、「強景氣循環」與「銀行金控收息」三大診斷模型
+              </p>
+            </div>
+            <input
+              type="text"
+              value={quickSearch}
+              onChange={(e) => setQuickSearch(e.target.value)}
+              placeholder="輸入代號、名稱或產業搜尋 (如 2330, 台積電, 金控)..."
+              className="w-full sm:w-72 px-3 py-2 text-xs rounded-xl bg-slate-950 border border-slate-700 text-slate-100"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {quickCards.map((stock) => {
+              const hr = stock.healthReport;
+              const grade = hr?.executiveSummary.grade ?? 'B';
+              const score = hr?.executiveSummary.totalScore ?? 75;
+              const verdict = hr?.executiveSummary.verdictBadge ?? `${grade} 級｜穩健觀察`;
+              const stance = hr?.actionPlan.stanceLabel ?? '逢低分批布局';
+              const stopPrice = hr?.actionPlan.sellAndDefenseStrategy.stopLossPrice;
+
+              return (
+                <div
+                  key={stock.id}
+                  onClick={() => loadCandidateIntoScorecard(stock, stock.recommendedProfile)}
+                  className="group p-4 rounded-xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-cyan-500/50 cursor-pointer transition-all flex flex-col justify-between gap-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-mono font-extrabold text-base text-slate-100 group-hover:text-cyan-300 transition">
+                          {stock.symbol}
+                        </span>
+                        <span className="font-bold text-sm text-slate-100 truncate">
+                          {stock.name}
+                        </span>
+                      </div>
+                      <GradeBadge grade={grade} />
+                    </div>
+
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                      <span className="text-slate-400">{stock.sector}</span>
+                      <span className="font-mono font-bold tabular-nums text-cyan-300">
+                        {formatTwd(stock.price)}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed pt-1">
+                      {hr?.executiveSummary.oneLineDiagnosis ?? `${stock.name}基本面與現金流穩健，點擊查看完整五章節深度健檢報告。`}
+                    </p>
+                  </div>
+
+                  <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                    <span className="text-emerald-300 font-semibold">
+                      {verdict}（{score.toFixed(0)}分）
+                    </span>
+                    <span className="text-slate-400 group-hover:text-cyan-300 font-medium flex items-center gap-1">
+                      {stopPrice ? `停損 NT$${stopPrice}` : stance} →
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">

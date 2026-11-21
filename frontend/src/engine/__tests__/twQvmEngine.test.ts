@@ -565,5 +565,30 @@ describe('Fin-QVM v1.0 銀行與金控特化評分模組測試', () => {
     expect(computeFinancialFinalScore({ sFQ: 40, sFV: 40, sFM: 20 }, 'DEFENSIVE')).toBe(100);
     expect(computeFinancialFinalScore({ sFQ: 40, sFV: 40, sFM: 20 }, 'NORMAL')).toBe(100);
   });
+
+  it('14. 個股深度健檢報告書產生器與白話文字匯出測試', async () => {
+    const { ensureStockHealthReport, formatHealthReportPlainText } = await import(
+      '../healthReportGenerator'
+    );
+    const tsmc = MOCK_TW_STOCKS.find((s) => s.symbol === '2330')!;
+    const report = ensureStockHealthReport(tsmc, 'NORMAL', '2026-11-20');
+
+    expect(report.executiveSummary.reportDate).toBe('2026-11-20');
+    expect(report.executiveSummary.grade).toBe('A');
+    expect(report.safetyCheckup.length).toBe(4);
+    expect(report.dimensions.length).toBe(3);
+    expect(report.actionPlan.buyStrategy.canBuyNow).toBe(true);
+    expect(report.actionPlan.buyStrategy.firstTranchePct).toBe(50);
+    expect(report.actionPlan.sellAndDefenseStrategy.stopLossPrice).toBeGreaterThan(0);
+
+    const defReport = ensureStockHealthReport(tsmc, 'DEFENSIVE', '2026-11-20');
+    expect(defReport.actionPlan.buyStrategy.firstTranchePct).toBe(30);
+
+    const plainText = formatHealthReportPlainText(tsmc, report);
+    expect(plainText).toContain('《台股個股深度健檢報告書》');
+    expect(plainText).toContain('2330 台積電');
+    expect(plainText).toContain('看錯停損參考價');
+  });
 });
+
 

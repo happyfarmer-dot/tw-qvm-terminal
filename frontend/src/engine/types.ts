@@ -298,6 +298,93 @@ export interface DataQuality {
   fetchedAt: string;
 }
 
+export interface HealthExecutiveSummary {
+  reportDate: string;
+  totalScore: number;
+  grade: Grade;
+  profileLabel: string;
+  verdictBadge: string;
+  oneLineDiagnosis: string;
+  suitableFor: string;
+}
+
+export interface HealthSafetyItem {
+  itemName: string;
+  displayValue: string;
+  status: 'pass' | 'warn' | 'fail' | 'unknown';
+  plainExplanation: string;
+}
+
+export interface HealthDimensionMetric {
+  label: string;
+  valueText: string;
+  benchmarkText: string;
+  status: '優秀' | '穩健' | '偏貴' | '警訊' | '待確認';
+  comment: string;
+}
+
+export interface HealthDimension {
+  key: 'quality' | 'value' | 'momentum';
+  title: string;
+  scorePct: number;
+  gradeText: string;
+  summaryComment: string;
+  metrics: HealthDimensionMetric[];
+}
+
+export interface HealthBuyStrategy {
+  canBuyNow: boolean;
+  firstTranchePct: number;
+  entryZoneText: string;
+  secondTrancheCondition: string;
+}
+
+export interface HealthSellDefenseStrategy {
+  stopLossPrice: number | null;
+  ma200Price: number | null;
+  trailingStopPrice: number | null;
+  fundamentalExitRule: string;
+}
+
+export interface HealthActionPlan {
+  stance: 'BUY' | 'HOLD_OR_WATCH' | 'AVOID_OR_SELL';
+  stanceLabel: string;
+  buyStrategy: HealthBuyStrategy;
+  sellAndDefenseStrategy: HealthSellDefenseStrategy;
+}
+
+export interface HealthQuarterlyChartPoint {
+  quarter: string;
+  revenueYi: number | null;
+  grossMarginPct: number | null;
+  dio: number | null;
+}
+
+export interface HealthValuationBandSummary {
+  metricLabel: string;
+  currentValue: number | null;
+  percentile5to7Y: number | null;
+  minVal: number | null;
+  p20Val: number | null;
+  p50Val: number | null;
+  p80Val: number | null;
+  maxVal: number | null;
+  positionComment: string;
+}
+
+export interface HealthChartSeries {
+  quarterlyTrend: HealthQuarterlyChartPoint[];
+  valuationBand: HealthValuationBandSummary;
+}
+
+export interface HealthReport {
+  executiveSummary: HealthExecutiveSummary;
+  safetyCheckup: HealthSafetyItem[];
+  dimensions: HealthDimension[];
+  actionPlan: HealthActionPlan;
+  chartSeries: HealthChartSeries;
+}
+
 export interface TwStockCandidate {
   id: string;
   symbol: string;
@@ -331,6 +418,7 @@ export interface TwStockCandidate {
   cyclicalMetrics: CyclicalMetrics;
   financialMetrics?: FinancialSectorMetrics;
   dataQuality?: DataQuality;
+  healthReport?: HealthReport;
   notes?: string;
 }
 

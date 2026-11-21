@@ -4,6 +4,7 @@ import type {
   CyclicalMetrics,
   DataQuality,
   FinancialSectorMetrics,
+  HealthReport,
   ManualScorecardInput,
   MarketRegime,
   StageZeroInput,
@@ -106,6 +107,7 @@ export interface StaticStockSnapshot {
   cyclicalMetrics: CyclicalMetrics;
   financialMetrics: FinancialSectorMetrics | null;
   dataQuality: DataQuality;
+  healthReport?: HealthReport | null;
 }
 
 export interface StocksBundleData {
@@ -338,6 +340,7 @@ export function mapSnapshotToCandidate(snap: StaticStockSnapshot): TwStockCandid
     cyclicalMetrics: snap.cyclicalMetrics,
     financialMetrics: snap.financialMetrics ?? undefined,
     dataQuality: snap.dataQuality,
+    healthReport: snap.healthReport ?? undefined,
   };
 }
 

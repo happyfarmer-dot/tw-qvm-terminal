@@ -74,16 +74,16 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
 
   const taiexText =
     manifest?.regime.indexClose != null
-      ? `TAIEX ${manifest.regime.indexClose.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
-      : 'TAIEX 待同步';
+      ? `加權指數 ${manifest.regime.indexClose.toLocaleString('en-US', { maximumFractionDigits: 0 })}`
+      : '加權指數待同步';
 
   return (
-    <div className="sticky top-0 z-30 bg-[#0b111e]/95 backdrop-blur border-b border-slate-800">
-      <div className="px-4 py-2.5 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap items-center gap-2.5">
+    <div className="sticky top-0 z-30 bg-[#0b111e]/95 backdrop-blur border-b border-slate-800 no-print">
+      <div className="px-3 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2.5">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={onToggleSidebar}
-            className="p-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition"
+            className="hidden md:inline-flex p-1.5 rounded-lg bg-slate-800/70 hover:bg-slate-700 text-slate-300 border border-slate-700/80 transition"
             title="收合／展開側邊欄"
           >
             <Menu className="w-4 h-4" />
@@ -283,12 +283,12 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
         <div className="flex items-center gap-2">
           <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
           <span>
-            <strong>台股無伺服器真實數據架構：</strong>
-            所有財報與日線皆由 GitHub Actions 每日收盤後自動產出靜態 JSON；個人持倉與金融 MOPS 監理覆寫僅儲存於您的瀏覽器本機 `localStorage`，絕不上傳公開倉庫。
+            <strong>台股自動化真實數據平台：</strong>
+            所有財報與收盤價皆於每日收盤後自動更新；個人自選持倉僅安全儲存於您的本機瀏覽器中。
           </span>
         </div>
         <span className="font-mono tabular-nums text-amber-300">
-          標準權重 Q:{weights.wQ}/V:{weights.wV}/M:{weights.wM} ｜ 首倉 {regime === 'DEFENSIVE' ? '30%' : '50%'}
+          權重配置 品質:{weights.wQ}% / 價值:{weights.wV}% / 動能:{weights.wM}% ｜ 建議首筆資金 {regime === 'DEFENSIVE' ? '30%' : '50%'}
         </span>
       </div>
     </div>

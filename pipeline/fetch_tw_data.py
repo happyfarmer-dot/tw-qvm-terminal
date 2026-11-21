@@ -15,6 +15,7 @@ from pipeline.calculators.cyclical_metrics import (
 )
 from pipeline.calculators.financial_ratios import compute_all_financial_ratios
 from pipeline.calculators.financial_sector_metrics import compute_financial_sector_metrics
+from pipeline.calculators.health_report_builder import build_stock_health_report
 from pipeline.calculators.regime_detector import detect_taiex_regime
 from pipeline.calculators.technical_metrics import compute_technical_metrics
 from pipeline.providers.finmind_client import FinMindClient, FinMindQuotaExceededError
@@ -320,6 +321,26 @@ def build_stock_snapshot(
 
     completeness_pct = round((non_null_count / len(check_map)) * 100.0, 1)
 
+    report_date_str = str(tech.get("reportDate") or taipei_now_iso[:10])
+    health_report = build_stock_health_report(
+        sym=sym,
+        name=name,
+        sector=sector,
+        profile=recommended_profile,
+        report_date=report_date_str,
+        price=tech["price"],
+        high_20d=tech.get("high20d"),
+        atr20=tech["atr20"],
+        ma120=tech["ma120"],
+        ma200=tech["ma200"],
+        sz=stage_zero_metrics,
+        ratios=ratios,
+        cyc=cyclical_model,
+        fin_sec=financial_metrics_model,
+        income_rows=income_rows,
+        regime="NORMAL",
+    )
+
     return TwStockSnapshot(
         symbol=sym,
         name=name,
@@ -347,6 +368,7 @@ def build_stock_snapshot(
             fromCache=from_cache,
             fetchedAt=taipei_now_iso,
         ),
+        healthReport=health_report,
     )
 
 

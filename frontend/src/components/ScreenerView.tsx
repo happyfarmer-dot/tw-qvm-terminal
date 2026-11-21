@@ -172,10 +172,10 @@ export const ScreenerView: React.FC = () => {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-lg font-bold text-slate-100">
-            台股多股批次篩選與同產業 Winsorize Z-Score 排名表
+            台股分類搜尋池與同產業綜合評分排行
           </h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            自動排除階段零紅燈後分產業 ±3σ 截尾標準化；若同產業樣本 &lt; 3 則回退至全批次母體
+            點擊任一股票或右側「深度健檢書」按鈕，立即開啟完整五章節《個股深度健檢報告書》
           </p>
         </div>
 
@@ -328,7 +328,7 @@ export const ScreenerView: React.FC = () => {
                     className={`hover:bg-slate-800/40 cursor-pointer ${
                       !item.stageZero.passed ? 'bg-rose-950/15' : ''
                     }`}
-                    onClick={() => setExpandedId(isExp ? null : item.stock.id)}
+                    onClick={() => loadCandidateIntoScorecard(item.stock)}
                   >
                     <td
                       className="py-2.5 px-3"
@@ -345,15 +345,21 @@ export const ScreenerView: React.FC = () => {
                         )}
                       </button>
                     </td>
-                    <td className="py-2.5 px-3">
+                    <td
+                      className="py-2.5 px-3"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setExpandedId(isExp ? null : item.stock.id);
+                      }}
+                    >
                       <div className="flex items-center gap-1.5">
                         {isExp ? (
                           <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
                         ) : (
                           <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
                         )}
-                        <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-slate-800 text-slate-300 uppercase">
-                          {item.stock.marketType}
+                        <span className="px-1.5 py-0.5 text-[10px] font-mono rounded bg-slate-800 text-slate-300">
+                          {item.stock.marketType === 'tpex' ? '上櫃' : '上市'}
                         </span>
                         <span className="font-mono font-bold text-slate-100">{item.stock.symbol}</span>
                         <span className="text-slate-300">{item.stock.name}</span>
@@ -362,11 +368,6 @@ export const ScreenerView: React.FC = () => {
                     <td className="py-2.5 px-3 text-slate-300">
                       <div>
                         {item.stock.sector}
-                        {item.stageZero.passed && (
-                          <span className="ml-1 text-[10px] text-slate-500">
-                            ({item.fallbackToMarketPool ? '回退母體' : `n=${item.sectorSampleCount}`})
-                          </span>
-                        )}
                       </div>
                       {item.stock.recommendedProfile !== 'standard' && (
                         <span
@@ -413,7 +414,7 @@ export const ScreenerView: React.FC = () => {
                         )}
                         {finBadge && (
                           <span className="text-[10px] text-emerald-300 font-mono">
-                            / Fin {finBadge.finalGrade}
+                            / 金融 {finBadge.finalGrade}
                           </span>
                         )}
                         {item.rating.antiBiasDowngraded && (
@@ -427,10 +428,10 @@ export const ScreenerView: React.FC = () => {
                       <div className="inline-flex items-center gap-1.5">
                         <button
                           onClick={() => loadCandidateIntoScorecard(item.stock)}
-                          className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 flex items-center gap-1"
+                          className="px-2.5 py-1 rounded bg-cyan-500/20 hover:bg-cyan-500/30 border border-cyan-500/40 text-cyan-200 font-semibold flex items-center gap-1"
                         >
                           <Stethoscope className="w-3 h-3" />
-                          健檢
+                          深度健檢書
                         </button>
                         <button
                           onClick={() => handleAddHolding(item)}

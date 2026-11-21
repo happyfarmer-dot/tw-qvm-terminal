@@ -246,4 +246,108 @@ async def test_pipeline_anonymous_fallback_mode(tmp_path: Path) -> None:
     # 2330, 2317 為核心龍頭股，應排在 9999 之前優先處理
     symbols_processed = [s.symbol for s in bundle.stocks]
     assert symbols_processed[:2] == ["2330", "2317"]
+    assert bundle.stocks[0].healthReport is not None
+    assert len(bundle.stocks[0].healthReport.safetyCheckup) == 4
+    assert len(bundle.stocks[0].healthReport.dimensions) == 3
+
+
+def test_health_report_generation_for_all_profiles() -> None:
+    from pipeline.calculators.health_report_builder import build_stock_health_report
+    from pipeline.schemas import (
+        CyclicalMetricsModel,
+        FinancialRatiosModel,
+        FinancialSectorMetricsModel,
+        GmQuarterPoint,
+        StageZeroMetricsModel,
+    )
+
+    sz = StageZeroMetricsModel(
+        isManufacturing=True,
+        avgDailyTurnover20dTWD=1_500_000_000,
+        isDispositionStock=False,
+        directorPledgeRatio=5.2,
+        cumulative3yOCF=50_000_000_000,
+        cumulative5yOCF=80_000_000_000,
+        consecutive2qArOrInvBloat=False,
+        beneishMScore=-2.45,
+        altmanZScore=4.2,
+    )
+    ratios = FinancialRatiosModel(
+        roic3yAvgPct=22.5,
+        gpaPct=34.0,
+        ocfToNi3yPct=125.0,
+        piotroskiRaw=8,
+        evToEbitda=11.5,
+        fcfYieldPct=5.8,
+        trailingPe=15.2,
+        pbRatio=3.2,
+        dividendYieldPct=3.8,
+        consecutive5yDividend=True,
+        mom12m1mSharpe=1.15,
+        rev3mCumYoYPct=18.5,
+        rev12mCumYoYPct=12.0,
+        trendVsMa200Pct=8.5,
+    )
+    cyc = CyclicalMetricsModel(
+        currentPB=1.4,
+        pbPercentile5to7Y=28.0,
+        avgRoic5to7Y=13.5,
+        normalizedEvToEbit=9.8,
+        roeZScoreVs5to7Y=0.3,
+        assetGrowthYoY=8.2,
+        latestDio=65.0,
+        dioQoqChange=-5.5,
+        grossMarginLatest=42.0,
+        grossMarginQoQ=1.8,
+        grossMarginQuarterlySeries=[
+            GmQuarterPoint(quarter="2025Q3", grossMarginPct=40.2),
+            GmQuarterPoint(quarter="2025Q4", grossMarginPct=42.0),
+        ],
+    )
+    fin_sec = FinancialSectorMetricsModel(
+        avgRoe5Y=11.2,
+        roeStdDev5Y=1.4,
+        minAnnualRoe5Y=9.1,
+        currentPB=1.15,
+        justifiedPB=1.35,
+        pbValuationRatio=0.85,
+        pbPercentile5to7Y=32.0,
+        cashDividendYieldPct=4.8,
+        consecutiveCashDivYears=8,
+        latestPayoutRatioPct=62.0,
+        usesCapitalReserveForDividend=False,
+    )
+
+    for prof in ("standard", "cyclical_heavy_asset", "financial_bank"):
+        report = build_stock_health_report(
+            sym="2330",
+            name="測試標的",
+            sector="半導體業",
+            profile=prof,  # type: ignore[arg-type]
+            report_date="2026-11-20",
+            price=1000.0,
+            high_20d=1040.0,
+            atr20=20.0,
+            ma120=950.0,
+            ma200=910.0,
+            sz=sz,
+            ratios=ratios,
+            cyc=cyc,
+            fin_sec=fin_sec if prof == "financial_bank" else None,
+            income_rows=[
+                {"date": "2025-09-30", "type": "Revenue", "value": 750_000_000_000},
+                {"date": "2025-12-31", "type": "Revenue", "value": 820_000_000_000},
+            ],
+            regime="NORMAL",
+        )
+        assert report.executiveSummary.grade in ("A", "B")
+        assert len(report.safetyCheckup) == 4
+        assert len(report.dimensions) == 3
+        assert report.actionPlan.buyStrategy.canBuyNow is True
+        assert report.actionPlan.buyStrategy.firstTranchePct == 50
+        assert report.actionPlan.sellAndDefenseStrategy.stopLossPrice == 950.0
+        assert report.actionPlan.sellAndDefenseStrategy.ma200Price == 910.0
+        expected_trail = 1000.0 if prof == "cyclical_heavy_asset" else 980.0
+        assert report.actionPlan.sellAndDefenseStrategy.trailingStopPrice == expected_trail
+
 

@@ -201,6 +201,93 @@ class DataQualityModel(CamelModel):
     fetchedAt: str
 
 
+class HealthExecutiveSummaryModel(CamelModel):
+    reportDate: str
+    totalScore: float
+    grade: Literal["A", "B", "C", "D", "F"]
+    profileLabel: str
+    verdictBadge: str
+    oneLineDiagnosis: str
+    suitableFor: str
+
+
+class HealthSafetyItemModel(CamelModel):
+    itemName: str
+    displayValue: str
+    status: Literal["pass", "warn", "fail", "unknown"]
+    plainExplanation: str
+
+
+class HealthDimensionMetricModel(CamelModel):
+    label: str
+    valueText: str
+    benchmarkText: str
+    status: Literal["優秀", "穩健", "偏貴", "警訊", "待確認"]
+    comment: str
+
+
+class HealthDimensionModel(CamelModel):
+    key: Literal["quality", "value", "momentum"]
+    title: str
+    scorePct: float
+    gradeText: str
+    summaryComment: str
+    metrics: list[HealthDimensionMetricModel] = Field(default_factory=list)
+
+
+class HealthBuyStrategyModel(CamelModel):
+    canBuyNow: bool
+    firstTranchePct: int
+    entryZoneText: str
+    secondTrancheCondition: str
+
+
+class HealthSellDefenseStrategyModel(CamelModel):
+    stopLossPrice: Optional[float] = None
+    ma200Price: Optional[float] = None
+    trailingStopPrice: Optional[float] = None
+    fundamentalExitRule: str
+
+
+class HealthActionPlanModel(CamelModel):
+    stance: Literal["BUY", "HOLD_OR_WATCH", "AVOID_OR_SELL"]
+    stanceLabel: str
+    buyStrategy: HealthBuyStrategyModel
+    sellAndDefenseStrategy: HealthSellDefenseStrategyModel
+
+
+class HealthQuarterlyChartPointModel(CamelModel):
+    quarter: str
+    revenueYi: Optional[float] = None
+    grossMarginPct: Optional[float] = None
+    dio: Optional[float] = None
+
+
+class HealthValuationBandSummaryModel(CamelModel):
+    metricLabel: str
+    currentValue: Optional[float] = None
+    percentile5to7Y: Optional[float] = None
+    minVal: Optional[float] = None
+    p20Val: Optional[float] = None
+    p50Val: Optional[float] = None
+    p80Val: Optional[float] = None
+    maxVal: Optional[float] = None
+    positionComment: str
+
+
+class HealthChartSeriesModel(CamelModel):
+    quarterlyTrend: list[HealthQuarterlyChartPointModel] = Field(default_factory=list)
+    valuationBand: HealthValuationBandSummaryModel
+
+
+class HealthReportModel(CamelModel):
+    executiveSummary: HealthExecutiveSummaryModel
+    safetyCheckup: list[HealthSafetyItemModel] = Field(default_factory=list)
+    dimensions: list[HealthDimensionModel] = Field(default_factory=list)
+    actionPlan: HealthActionPlanModel
+    chartSeries: HealthChartSeriesModel
+
+
 class TwStockSnapshot(CamelModel):
     symbol: str
     name: str
@@ -221,6 +308,7 @@ class TwStockSnapshot(CamelModel):
     cyclicalMetrics: CyclicalMetricsModel = Field(default_factory=CyclicalMetricsModel)
     financialMetrics: Optional[FinancialSectorMetricsModel] = None
     dataQuality: DataQualityModel
+    healthReport: Optional[HealthReportModel] = None
 
 
 class PipelineStatsModel(CamelModel):

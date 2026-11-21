@@ -30,6 +30,8 @@ def compute_technical_metrics(df: pd.DataFrame) -> dict[str, Any]:
     """
     empty: dict[str, Any] = {
         "price": None,
+        "reportDate": None,
+        "high20d": None,
         "avgDailyTurnover20dTWD": None,
         "annualizedVol60dPct": None,
         "annualizedVol120dPct": None,
@@ -47,10 +49,13 @@ def compute_technical_metrics(df: pd.DataFrame) -> dict[str, Any]:
 
     close = df["adj_close"].astype(float)
     raw_close = df["close"].astype(float) if "close" in df.columns else close
+    raw_high = df["max"].astype(float) if "max" in df.columns else raw_close
     high = df["adj_max"].astype(float) if "adj_max" in df.columns else close
     low = df["adj_min"].astype(float) if "adj_min" in df.columns else close
 
     latest_price = _safe_float(raw_close.iloc[-1])
+    report_date = str(df["date"].iloc[-1]) if "date" in df.columns and not df.empty else None
+    high_20d = _safe_float(round(float(raw_high.tail(20).max()), 2)) if not raw_high.empty else latest_price
 
     # 20D 平均成交金額 (Trading_money)
     avg_turnover_20d: Optional[float] = None
@@ -129,6 +134,8 @@ def compute_technical_metrics(df: pd.DataFrame) -> dict[str, Any]:
 
     return {
         "price": latest_price,
+        "reportDate": report_date,
+        "high20d": high_20d,
         "avgDailyTurnover20dTWD": avg_turnover_20d,
         "annualizedVol60dPct": vol_60d,
         "annualizedVol120dPct": vol_120d,
