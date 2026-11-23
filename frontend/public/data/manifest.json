@@ -1,19 +1,19 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-23 13:08",
-  "updatedAtUtc": "2026-11-23T05:08:25.121996+00:00",
+  "updatedAtTaipei": "2026-11-23 15:16",
+  "updatedAtUtc": "2026-11-23T07:16:37.268288+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
-    "indexClose": 36033.29,
-    "ma200": 41527.34,
+    "indexClose": 36811.89,
+    "ma200": 41555.17,
     "drawdown20dPct": 23.39,
-    "annualizedVol20dPct": 48.97,
+    "annualizedVol20dPct": 50.39,
     "reasons": [
-      "加權指數 (36,033) 低於 200MA (41,527)",
+      "加權指數 (36,812) 低於 200MA (41,555)",
       "近 20 日最大回撤 23.39% (> 10%)",
-      "近 20 日年化波動率 48.97% (> 25%)"
+      "近 20 日年化波動率 50.39% (> 25%)"
     ]
   },
   "stats": {
