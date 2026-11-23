@@ -5,7 +5,7 @@ import datetime as dt
 import json
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Literal, Optional
 
 from pipeline.cache_manager import PipelineCacheManager
 from pipeline.calculators.adj_price import compute_free_adjusted_prices
@@ -20,8 +20,10 @@ from pipeline.calculators.financial_sector_metrics import compute_financial_sect
 from pipeline.calculators.health_report_builder import build_stock_health_report
 from pipeline.calculators.regime_detector import detect_taiex_regime
 from pipeline.calculators.technical_metrics import compute_technical_metrics
+from pipeline.market_funnel import build_dynamic_universe, load_symbol_list_json
 from pipeline.providers.finmind_client import FinMindClient, FinMindQuotaExceededError
 from pipeline.providers.twse_tpex_client import TwseTpexClient
+from pipeline.providers.us_macro_client import UsMacroClient
 from pipeline.schemas import (
     CyclicalMetricsModel,
     DataQualityModel,
@@ -126,6 +128,8 @@ def build_stock_snapshot(
     official_snap: dict[str, Any],
     from_cache: bool,
     taipei_now_iso: str,
+    regime: Literal["NORMAL", "DEFENSIVE"] = "NORMAL",
+    us_macro: Optional[dict[str, Any]] = None,
 ) -> TwStockSnapshot:
     latest_info = FinMindClient.pick_latest_stock_info(info_rows)
     name = (
@@ -354,7 +358,8 @@ def build_stock_snapshot(
         cyc=cyclical_model,
         fin_sec=financial_metrics_model,
         income_rows=income_rows,
-        regime="NORMAL",
+        regime=regime,
+        us_macro=us_macro,
     )
 
     return TwStockSnapshot(
@@ -397,16 +402,19 @@ async def run_pipeline(
     force_refresh: bool = False,
     finmind_client: Optional[FinMindClient] = None,
     twse_client: Optional[TwseTpexClient] = None,
+    us_macro_client: Optional[UsMacroClient] = None,
 ) -> tuple[ManifestModel, StocksBundleModel]:
     pipeline_dir = root_dir / "pipeline"
     cache_dir = pipeline_dir / "cache"
     output_dir = root_dir / "frontend" / "public" / "data"
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    watchlist = load_watchlist(pipeline_dir / "watchlist.json", target_symbols_env)
+    fallback_watchlist = load_watchlist(pipeline_dir / "watchlist.json", target_symbols_env)
+    custom_watchlist = load_symbol_list_json(pipeline_dir / "custom_watchlist.json")
     cache_mgr = PipelineCacheManager(cache_dir)
     finmind = finmind_client or FinMindClient(token=finmind_token, min_interval_seconds=1.2)
     twse_tpex = twse_client or TwseTpexClient()
+    us_macro_fetcher = us_macro_client or UsMacroClient(cache_dir)
 
     taipei_now = dt.datetime.now(TAIPEI_TZ)
     taipei_today = taipei_now.date()
@@ -431,15 +439,22 @@ async def run_pipeline(
     max_requests_allowed = (quota_limit or 520) if is_token_mode else 220
     quota_exhausted = (quota_remaining is not None and quota_remaining < 8) or (finmind.request_count >= max_requests_allowed)
 
-    # 2. 預抓 TWSE / TPEx 全市場零額度快照
+    # 2. 預抓 TWSE / TPEx 全市場零額度快照 ＋ 美股四大量化風向球 (yfinance)
     await twse_tpex.prefetch_market_snapshots()
+    us_macro = us_macro_fetcher.fetch_us_macro()
 
-    # 3. 計算 TAIEX 大盤體制
-    regime_data = RegimeModel(
-        regime="NORMAL",
-        indexSymbol="TAIEX",
-        reasons=["尚未取得 TAIEX 歷史序列，暫以常態體制顯示。"],
+    # 2.5 執行全市場動態漏斗篩選（400–500 檔高流動性體質台股，3 順位優先序）
+    cached_syms = {p.name.split(".")[0].upper() for p in cache_dir.glob("*.json.gz")}
+    watchlist, _funnel_stats = build_dynamic_universe(
+        twse_tpex=twse_tpex,
+        custom_watchlist=custom_watchlist,
+        cached_symbols=cached_syms,
+        fallback_watchlist=fallback_watchlist,
+        target_symbols_env=target_symbols_env,
     )
+
+    # 3. 計算台美雙重市場體制 (TAIEX + S&P500 / VIX)
+    taiex_rows: list[dict[str, Any]] = []
     if not quota_exhausted:
         try:
             taiex_rows = await finmind.fetch_dataset(
@@ -447,12 +462,12 @@ async def run_pipeline(
                 data_id="TAIEX",
                 start_date=taiex_start,
             )
-            detected = detect_taiex_regime(taiex_rows)
-            regime_data = RegimeModel(**detected)
         except FinMindQuotaExceededError:
             quota_exhausted = True
-        except Exception as exc:
-            regime_data.reasons = [f"TAIEX 體制抓取異常：{exc}"]
+        except Exception:
+            taiex_rows = []
+    detected = detect_taiex_regime(taiex_rows, us_macro=us_macro)
+    regime_data = RegimeModel(**detected)
 
     # 4. 逐檔處理追蹤清單
     snapshots: list[TwStockSnapshot] = []
@@ -553,6 +568,8 @@ async def run_pipeline(
                 official_snap=official_snap,
                 from_cache=not used_finmind_for_sym,
                 taipei_now_iso=taipei_now_iso,
+                regime=regime_data.regime,
+                us_macro=us_macro,
             )
             snapshots.append(snap)
 
@@ -579,6 +596,8 @@ async def run_pipeline(
                     official_snap=official_snap,
                     from_cache=True,
                     taipei_now_iso=taipei_now_iso,
+                    regime=regime_data.regime,
+                    us_macro=us_macro,
                 )
                 snapshots.append(snap)
         except Exception as exc:

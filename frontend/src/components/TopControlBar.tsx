@@ -198,66 +198,133 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
         </div>
       </div>
 
-      {/* Expandable TAIEX Regime Panel */}
+      {/* Expandable Dual-Market Regime Panel (Taiwan TAIEX + US Macro) */}
       {showRegimePanel && (
-        <div className="px-4 py-3 bg-slate-900/95 border-t border-slate-800 space-y-2.5 text-xs">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex flex-wrap items-center gap-3">
-              <span className="font-semibold text-slate-300">TAIEX 加權指數指標（可微調試算）：</span>
-              <label className="flex items-center gap-1 text-slate-400">
-                收盤
-                <input
-                  type="number"
-                  value={benchmark.indexClose}
-                  onChange={(e) => updateBenchmark({ indexClose: Number(e.target.value) || 0 })}
-                  className="w-24 px-2 py-1 rounded bg-slate-950 border border-slate-700 font-mono tabular-nums text-slate-100"
-                />
-              </label>
-              <label className="flex items-center gap-1 text-slate-400">
-                200MA
-                <input
-                  type="number"
-                  value={benchmark.ma200}
-                  onChange={(e) => updateBenchmark({ ma200: Number(e.target.value) || 1 })}
-                  className="w-24 px-2 py-1 rounded bg-slate-950 border border-slate-700 font-mono tabular-nums text-slate-100"
-                />
-              </label>
-              <label className="flex items-center gap-1 text-slate-400">
-                20日回撤 (%)
-                <input
-                  type="number"
-                  step="0.1"
-                  value={benchmark.drawdown20dPct}
-                  onChange={(e) =>
-                    updateBenchmark({ drawdown20dPct: Number(e.target.value) || 0 })
-                  }
-                  className="w-20 px-2 py-1 rounded bg-slate-950 border border-slate-700 font-mono tabular-nums text-slate-100"
-                />
-              </label>
-              <label className="flex items-center gap-1 text-slate-400">
-                20日年化波動 (%)
-                <input
-                  type="number"
-                  step="0.1"
-                  value={benchmark.annualizedVol20dPct}
-                  onChange={(e) =>
-                    updateBenchmark({ annualizedVol20dPct: Number(e.target.value) || 0 })
-                  }
-                  className="w-20 px-2 py-1 rounded bg-slate-950 border border-slate-700 font-mono tabular-nums text-slate-100"
-                />
-              </label>
+        <div className="px-4 py-3 bg-slate-900/95 border-t border-slate-800 space-y-3 text-xs">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {/* 左欄：台股 TAIEX */}
+            <div className="p-3 rounded-xl bg-slate-950/75 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-cyan-300">🇹🇼 台股加權指數（TAIEX）</span>
+                <span className="font-mono tabular-nums text-[11px] text-slate-400">
+                  收盤 {benchmark.indexClose > 0 ? benchmark.indexClose.toLocaleString() : '-'} ｜ 200MA {benchmark.ma200 > 0 ? benchmark.ma200.toLocaleString() : '-'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <label className="flex items-center gap-1 text-slate-400">
+                  收盤
+                  <input
+                    type="number"
+                    value={benchmark.indexClose}
+                    onChange={(e) => updateBenchmark({ indexClose: Number(e.target.value) || 0 })}
+                    className="w-20 px-2 py-1 rounded bg-slate-900 border border-slate-700 font-mono tabular-nums text-slate-100"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-slate-400">
+                  200MA
+                  <input
+                    type="number"
+                    value={benchmark.ma200}
+                    onChange={(e) => updateBenchmark({ ma200: Number(e.target.value) || 1 })}
+                    className="w-20 px-2 py-1 rounded bg-slate-900 border border-slate-700 font-mono tabular-nums text-slate-100"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-slate-400">
+                  20日回撤(%)
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={benchmark.drawdown20dPct}
+                    onChange={(e) =>
+                      updateBenchmark({ drawdown20dPct: Number(e.target.value) || 0 })
+                    }
+                    className="w-16 px-2 py-1 rounded bg-slate-900 border border-slate-700 font-mono tabular-nums text-slate-100"
+                  />
+                </label>
+                <label className="flex items-center gap-1 text-slate-400">
+                  20日波動(%)
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={benchmark.annualizedVol20dPct}
+                    onChange={(e) =>
+                      updateBenchmark({ annualizedVol20dPct: Number(e.target.value) || 0 })
+                    }
+                    className="w-16 px-2 py-1 rounded bg-slate-900 border border-slate-700 font-mono tabular-nums text-slate-100"
+                  />
+                </label>
+              </div>
+            </div>
+
+            {/* 右欄：美股 S&P 500 / VIX / SOXX / 10Y 美債 */}
+            <div className="p-3 rounded-xl bg-slate-950/75 border border-slate-800 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold text-emerald-300">🇺🇸 美股四大量化風向球</span>
+                <span className="font-mono tabular-nums text-[11px] text-slate-400">
+                  {manifest?.regime.usMacro?.asOfDate ? `基準日：${manifest.regime.usMacro.asOfDate}` : '待同步'}
+                  {manifest?.regime.usMacro?.fromCache ? '（快取沿用）' : ''}
+                </span>
+              </div>
+              {manifest?.regime.usMacro ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 font-mono tabular-nums text-[11px]">
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                    <div className="text-slate-400">S&P 500</div>
+                    <div className={`font-bold ${manifest.regime.usMacro.sp500.belowMa200 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                      {manifest.regime.usMacro.sp500.close?.toLocaleString() ?? '-'}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      年線 {manifest.regime.usMacro.sp500.ma200?.toLocaleString() ?? '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                    <div className="text-slate-400">VIX 恐慌</div>
+                    <div className={`font-bold ${(manifest.regime.usMacro.vixClose ?? 0) >= 25 ? 'text-rose-300' : 'text-emerald-300'}`}>
+                      {manifest.regime.usMacro.vixClose?.toFixed(2) ?? '-'}
+                    </div>
+                    <div className="text-[10px] text-slate-500">警戒線 ≥ 25</div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                    <div className="text-slate-400">費半 SOXX</div>
+                    <div className={`font-bold ${manifest.regime.usMacro.soxx.belowMa200 ? 'text-amber-300' : 'text-emerald-300'}`}>
+                      {manifest.regime.usMacro.soxx.close?.toFixed(2) ?? '-'}
+                    </div>
+                    <div className="text-[10px] text-slate-500">
+                      20日 {manifest.regime.usMacro.soxx.return20dPct !== null ? `${manifest.regime.usMacro.soxx.return20dPct >= 0 ? '+' : ''}${manifest.regime.usMacro.soxx.return20dPct}%` : '-'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                    <div className="text-slate-400">10年美債</div>
+                    <div className="font-bold text-cyan-300">
+                      {manifest.regime.usMacro.tnxYieldPct !== null ? `${manifest.regime.usMacro.tnxYieldPct.toFixed(2)}%` : '-'}
+                    </div>
+                    <div className="text-[10px] text-slate-500">無風險基準</div>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-slate-400 text-xs">美股四大量化風向球數據將於下次排程自動更新。</div>
+              )}
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+            <div className="text-[11px] text-slate-400">
+              {manifest?.regime.reasons && manifest.regime.reasons.length > 0
+                ? `台美雙重體制判定依據：${manifest.regime.reasons.join(' ｜ ')}`
+                : '台美大盤處於安全區間'}
             </div>
             <div className="flex items-center gap-2">
               <span className="text-slate-300">
                 系統建議：
                 <strong
                   className={
-                    regimeEval.suggestedRegime === 'DEFENSIVE'
+                    regimeEval.suggestedRegime === 'DEFENSIVE' || manifest?.regime.regime === 'DEFENSIVE'
                       ? 'text-amber-300 ml-1'
                       : 'text-emerald-300 ml-1'
                   }
                 >
-                  {regimeEval.suggestedRegime === 'DEFENSIVE' ? '防禦模式' : '常態模式'}
+                  {regimeEval.suggestedRegime === 'DEFENSIVE' || manifest?.regime.regime === 'DEFENSIVE'
+                    ? '防禦模式（首筆 30%）'
+                    : '常態模式（首筆 50%）'}
                 </strong>
               </span>
               {regimeEval.shouldPromptSwitch && (
@@ -270,11 +337,6 @@ export const TopControlBar: React.FC<{ onToggleSidebar: () => void }> = ({ onTog
               )}
             </div>
           </div>
-          {manifest?.regime.reasons && manifest.regime.reasons.length > 0 && (
-            <div className="text-[11px] text-slate-400">
-              大盤判定依據：{manifest.regime.reasons.join(' ｜ ')}
-            </div>
-          )}
         </div>
       )}
 

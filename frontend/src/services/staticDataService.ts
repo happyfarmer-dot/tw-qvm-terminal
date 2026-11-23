@@ -9,6 +9,7 @@ import type {
   MarketRegime,
   StageZeroInput,
   TwStockCandidate,
+  UsMacroData,
   ValuationProfile,
 } from '../engine/types';
 
@@ -53,6 +54,7 @@ export interface ManifestData {
     drawdown20dPct: number | null;
     annualizedVol20dPct: number | null;
     reasons: string[];
+    usMacro?: UsMacroData | null;
   };
   stats: PipelineStats;
 }

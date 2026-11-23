@@ -351,6 +351,45 @@ export const StockHealthReportView: React.FC<StockHealthReportViewProps> = ({
             {ex.oneLineDiagnosis}
           </p>
         </div>
+
+        {/* 上游美股費半（SOXX）量化連動提示（半導體／電子／電腦週邊族群顯示） */}
+        {report.usMacroContext?.isTechRelated && report.usMacroContext.soxxClose !== null && (
+          <div
+            className={`rounded-xl border p-3.5 space-y-1.5 print-subcard ${
+              report.usMacroContext.soxxBelowMa200
+                ? 'bg-amber-950/35 border-amber-500/45'
+                : 'bg-slate-900/70 border-slate-700/70'
+            }`}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+              <span className="font-bold text-slate-100 flex items-center gap-1.5 print-text-primary">
+                🇺🇸 上游美股費半（SOXX）狀態：
+                <span
+                  className={
+                    report.usMacroContext.soxxBelowMa200
+                      ? 'text-amber-300 print-text-primary'
+                      : 'text-emerald-300 print-text-primary'
+                  }
+                >
+                  {report.usMacroContext.soxxStatusLabel ?? '已同步'}
+                </span>
+              </span>
+              <span className="font-mono tabular-nums text-slate-300 print-text-secondary">
+                收盤 {report.usMacroContext.soxxClose.toFixed(2)} ｜ 年線{' '}
+                {report.usMacroContext.soxxMa200?.toFixed(2) ?? '-'} ｜ 近20日{' '}
+                {report.usMacroContext.soxxReturn20dPct !== null
+                  ? `${report.usMacroContext.soxxReturn20dPct >= 0 ? '+' : ''}${report.usMacroContext.soxxReturn20dPct.toFixed(1)}%`
+                  : '-'}
+              </span>
+            </div>
+            {report.usMacroContext.soxxWarning && (
+              <p className="text-xs sm:text-sm font-semibold text-amber-200 flex items-center gap-1.5 print-text-primary">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                {report.usMacroContext.soxxWarning}
+              </p>
+            )}
+          </div>
+        )}
       </section>
 
       {/* 2. 第一節：體質與防雷安全檢查表 */}

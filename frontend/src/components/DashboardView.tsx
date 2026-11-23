@@ -219,11 +219,16 @@ export const DashboardView: React.FC = () => {
         <div className="p-4 sm:p-5 rounded-2xl bg-[#0f172a] border border-slate-800 space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-slate-100">
-                🔍 點擊任一股票卡片，立即開啟《個股深度健檢報告書》
-              </h2>
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm sm:text-base font-bold text-slate-100">
+                  🔍 點擊任一股票卡片，立即開啟《個股深度健檢報告書》
+                </h2>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/15 text-emerald-300 border border-emerald-500/40 tabular-nums">
+                  已收錄 {universe.length} 檔高流動性體質台股
+                </span>
+              </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                自動適配「標準品質成長」、「強景氣循環」與「銀行金控收息」三大診斷模型
+                全市場動態漏斗自動篩選（日成交額 ≥ 5,000 萬、股價 ≥ 15 元），自動適配標準／循環／金融三大診斷模型
               </p>
             </div>
             <input
@@ -235,58 +240,64 @@ export const DashboardView: React.FC = () => {
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {quickCards.map((stock) => {
-              const hr = stock.healthReport;
-              const grade = hr?.executiveSummary.grade ?? 'B';
-              const score = hr?.executiveSummary.totalScore ?? 75;
-              const verdict = hr?.executiveSummary.verdictBadge ?? `${grade} 級｜穩健觀察`;
-              const stance = hr?.actionPlan.stanceLabel ?? '逢低分批布局';
-              const stopPrice = hr?.actionPlan.sellAndDefenseStrategy.stopLossPrice;
+          {quickCards.length === 0 && quickSearch.trim() !== '' ? (
+            <div className="p-4 rounded-xl bg-amber-950/30 border border-amber-500/35 text-xs sm:text-sm text-amber-200 leading-relaxed">
+              找不到「<strong className="font-mono">{quickSearch.trim()}</strong>」：此代號未通過「日成交額 ≥ 5,000 萬、股價 ≥ 15 元與基本獲利」初篩（或尚在排程建庫中）；如需強制追蹤，可加入 <code className="px-1.5 py-0.5 rounded bg-slate-900 text-cyan-300">pipeline/custom_watchlist.json</code>。
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {quickCards.map((stock) => {
+                const hr = stock.healthReport;
+                const grade = hr?.executiveSummary.grade ?? 'B';
+                const score = hr?.executiveSummary.totalScore ?? 75;
+                const verdict = hr?.executiveSummary.verdictBadge ?? `${grade} 級｜穩健觀察`;
+                const stance = hr?.actionPlan.stanceLabel ?? '逢低分批布局';
+                const stopPrice = hr?.actionPlan.sellAndDefenseStrategy.stopLossPrice;
 
-              return (
-                <div
-                  key={stock.id}
-                  onClick={() => loadCandidateIntoScorecard(stock, stock.recommendedProfile)}
-                  className="group p-4 rounded-xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-cyan-500/50 cursor-pointer transition-all flex flex-col justify-between gap-3"
-                >
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-mono font-extrabold text-base text-slate-100 group-hover:text-cyan-300 transition">
-                          {stock.symbol}
-                        </span>
-                        <span className="font-bold text-sm text-slate-100 truncate">
-                          {stock.name}
+                return (
+                  <div
+                    key={stock.id}
+                    onClick={() => loadCandidateIntoScorecard(stock, stock.recommendedProfile)}
+                    className="group p-4 rounded-xl bg-slate-900/90 hover:bg-slate-800/90 border border-slate-800 hover:border-cyan-500/50 cursor-pointer transition-all flex flex-col justify-between gap-3"
+                  >
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-mono font-extrabold text-base text-slate-100 group-hover:text-cyan-300 transition">
+                            {stock.symbol}
+                          </span>
+                          <span className="font-bold text-sm text-slate-100 truncate">
+                            {stock.name}
+                          </span>
+                        </div>
+                        <GradeBadge grade={grade} />
+                      </div>
+
+                      <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                        <span className="text-slate-400">{stock.sector}</span>
+                        <span className="font-mono font-bold tabular-nums text-cyan-300">
+                          {formatTwd(stock.price)}
                         </span>
                       </div>
-                      <GradeBadge grade={grade} />
+
+                      <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed pt-1">
+                        {hr?.executiveSummary.oneLineDiagnosis ?? `${stock.name}基本面與現金流穩健，點擊查看完整五章節深度健檢報告。`}
+                      </p>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                      <span className="text-slate-400">{stock.sector}</span>
-                      <span className="font-mono font-bold tabular-nums text-cyan-300">
-                        {formatTwd(stock.price)}
+                    <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
+                      <span className="text-emerald-300 font-semibold">
+                        {verdict}（{score.toFixed(0)}分）
+                      </span>
+                      <span className="text-slate-400 group-hover:text-cyan-300 font-medium flex items-center gap-1">
+                        {stopPrice ? `停損 NT$${stopPrice}` : stance} →
                       </span>
                     </div>
-
-                    <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed pt-1">
-                      {hr?.executiveSummary.oneLineDiagnosis ?? `${stock.name}基本面與現金流穩健，點擊查看完整五章節深度健檢報告。`}
-                    </p>
                   </div>
-
-                  <div className="pt-2.5 border-t border-slate-800/80 flex items-center justify-between text-[11px]">
-                    <span className="text-emerald-300 font-semibold">
-                      {verdict}（{score.toFixed(0)}分）
-                    </span>
-                    <span className="text-slate-400 group-hover:text-cyan-300 font-medium flex items-center gap-1">
-                      {stopPrice ? `停損 NT$${stopPrice}` : stance} →
-                    </span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
 

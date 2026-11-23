@@ -264,7 +264,7 @@ export const ScorecardView: React.FC = () => {
       );
     if (!partial) {
       setFetchError(
-        `此代號「${clean}」尚未納入排程清單，請至 GitHub watchlist.json 新增並執行排程，或於下方手動輸入財報數值試算。`
+        `此代號「${clean}」未通過「日成交額 ≥ 5,000 萬、股價 ≥ 15 元與基本獲利」初篩（或尚在排程建庫中）；如需強制追蹤，可加入 pipeline/custom_watchlist.json。`
       );
       return;
     }

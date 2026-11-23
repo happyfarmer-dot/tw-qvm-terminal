@@ -23,11 +23,26 @@ from pipeline.schemas import (
     HealthReportModel,
     HealthSafetyItemModel,
     HealthSellDefenseStrategyModel,
+    HealthUsMacroContextModel,
     HealthValuationBandSummaryModel,
     StageZeroMetricsModel,
     ValuationProfile,
 )
 
+
+TECH_LINKED_KEYWORDS = (
+    "半導體",
+    "電子",
+    "電腦",
+    "週邊",
+    "通信網路",
+    "光電",
+    "IC",
+    "晶圓",
+    "伺服器",
+    "零組件",
+    "通路",
+)
 
 MetricStatus = Literal["優秀", "穩健", "偏貴", "警訊", "待確認"]
 SafetyStatus = Literal["pass", "warn", "fail", "unknown"]
@@ -378,11 +393,64 @@ def build_stock_health_report(
     fin_sec: Optional[FinancialSectorMetricsModel],
     income_rows: list[dict[str, Any]],
     regime: Literal["NORMAL", "DEFENSIVE"] = "NORMAL",
+    us_macro: Optional[dict[str, Any]] = None,
 ) -> HealthReportModel:
     """
     依個股自動適配之模型（標準品質／強景氣循環／銀行金控）產出 5 大章節完整白話《個股深度健檢報告書》。
     所有比較運算符統一採用純 Unicode（≥ / ≤），嚴禁出現未渲染的 $ 符號。
     """
+    is_tech_related = any(kw in sector or kw in name for kw in TECH_LINKED_KEYWORDS)
+    tnx_yield: Optional[float] = None
+    soxx_close: Optional[float] = None
+    soxx_ma200: Optional[float] = None
+    soxx_ret20d: Optional[float] = None
+    soxx_below: Optional[bool] = None
+    soxx_status_lbl: Optional[str] = None
+    soxx_warning: Optional[str] = None
+    us_as_of: Optional[str] = None
+
+    if us_macro:
+        us_as_of = us_macro.get("asOfDate")
+        raw_tnx = us_macro.get("tnxYieldPct")
+        if _is_num(raw_tnx) and float(raw_tnx) > 0:
+            tnx_yield = round(float(raw_tnx), 2)
+        soxx = us_macro.get("soxx") or {}
+        if _is_num(soxx.get("close")):
+            soxx_close = round(float(soxx["close"]), 2)
+        if _is_num(soxx.get("ma200")):
+            soxx_ma200 = round(float(soxx["ma200"]), 2)
+        if _is_num(soxx.get("return20dPct")):
+            soxx_ret20d = round(float(soxx["return20dPct"]), 2)
+        if soxx.get("belowMa200") is not None:
+            soxx_below = bool(soxx.get("belowMa200"))
+        elif soxx_close is not None and soxx_ma200 is not None:
+            soxx_below = soxx_close < soxx_ma200
+
+        if soxx_below is True:
+            soxx_status_lbl = "空頭逆風（位於 200 日年線下方）"
+            if is_tech_related:
+                soxx_warning = "美股費半指數目前位於年線下方，上游科技股逆風，請嚴格執行分批布局與停損紀律"
+        elif soxx_below is False:
+            soxx_status_lbl = "多頭順風（站穩 200 日年線之上）"
+
+    fcf_excellent_thresh = round(tnx_yield + 1.5, 2) if tnx_yield is not None else 5.5
+    us_macro_context: Optional[HealthUsMacroContextModel] = (
+        HealthUsMacroContextModel(
+            isTechRelated=is_tech_related,
+            soxxClose=soxx_close,
+            soxxMa200=soxx_ma200,
+            soxxReturn20dPct=soxx_ret20d,
+            soxxBelowMa200=soxx_below,
+            soxxStatusLabel=soxx_status_lbl,
+            soxxWarning=soxx_warning,
+            tnxYieldPct=tnx_yield,
+            fcfBenchmarkPct=fcf_excellent_thresh,
+            asOfDate=us_as_of,
+        )
+        if us_macro
+        else None
+    )
+
     safety_items, has_fatal, fatal_reasons = _build_safety_checkup(
         profile=profile,
         sz=sz,
@@ -862,7 +930,7 @@ def build_stock_health_report(
         else:
             v_pts += 22.0
         if _is_num(fcf_y):
-            v_pts += 32.0 if float(fcf_y) >= 5.5 else (22.0 if float(fcf_y) >= 3.0 else (12.0 if float(fcf_y) >= 0 else 4.0))
+            v_pts += 32.0 if float(fcf_y) >= fcf_excellent_thresh else (22.0 if float(fcf_y) >= 3.0 else (12.0 if float(fcf_y) >= 0 else 4.0))
         else:
             v_pts += 16.0
         if _is_num(pe) and float(pe) > 0:
@@ -871,6 +939,11 @@ def build_stock_health_report(
             v_pts += 16.0
         v_score = round(max(10.0, min(98.0, v_pts)), 1)
 
+        fcf_bench_txt = (
+            f"穩健標準 ≥ 3.5%（高於 10 年美債 {tnx_yield:.2f}% + 1.5% = {fcf_excellent_thresh:.1f}% 為優秀）"
+            if tnx_yield is not None
+            else "穩健標準 ≥ 3.5%（≥ 5.5% 現金回報極佳）"
+        )
         v_metrics = [
             HealthDimensionMetricModel(
                 label="企業價值倍數（EV/EBITDA）",
@@ -882,9 +955,9 @@ def build_stock_health_report(
             HealthDimensionMetricModel(
                 label="自由現金流殖利率",
                 valueText=_fmt_num(fcf_y, 1, "%"),
-                benchmarkText="穩健標準 ≥ 3.5%（≥ 5.5% 現金回報極佳）",
-                status="優秀" if (_is_num(fcf_y) and float(fcf_y) >= 5.5) else ("穩健" if (_is_num(fcf_y) and float(fcf_y) >= 2.5) else ("偏貴" if _is_num(fcf_y) else "待確認")),
-                comment="公司扣除擴廠資本支出後，每年真正可自由支配發息或還債的現金報酬率。",
+                benchmarkText=fcf_bench_txt,
+                status="優秀" if (_is_num(fcf_y) and float(fcf_y) >= fcf_excellent_thresh) else ("穩健" if (_is_num(fcf_y) and float(fcf_y) >= 2.5) else ("偏貴" if _is_num(fcf_y) else "待確認")),
+                comment="公司扣除擴廠資本支出後，每年真正可自由支配發息或還債的現金報酬率（需顯著高於美國 10 年期無風險公債殖利率）。",
             ),
             HealthDimensionMetricModel(
                 label="目前本益比（P/E）與現金股利殖利率",
@@ -1197,4 +1270,5 @@ def build_stock_health_report(
             quarterlyTrend=q_trend,
             valuationBand=val_band,
         ),
+        usMacroContext=us_macro_context,
     )

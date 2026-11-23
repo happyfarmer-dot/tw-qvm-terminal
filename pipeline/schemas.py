@@ -18,6 +18,28 @@ class CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class UsIndexStatsModel(CamelModel):
+    close: Optional[float] = None
+    ma200: Optional[float] = None
+    belowMa200: Optional[bool] = None
+    drawdown20dPct: Optional[float] = None
+    return20dPct: Optional[float] = None
+    date: Optional[str] = None
+
+
+class UsMacroModel(CamelModel):
+    asOfDate: Optional[str] = None
+    fetchedAtTaipei: Optional[str] = None
+    fromCache: bool = False
+    sp500: UsIndexStatsModel = Field(default_factory=UsIndexStatsModel)
+    soxx: UsIndexStatsModel = Field(default_factory=UsIndexStatsModel)
+    vixClose: Optional[float] = None
+    vixDate: Optional[str] = None
+    tnxYieldPct: Optional[float] = None
+    tnxDate: Optional[str] = None
+    statusNote: Optional[str] = None
+
+
 class RegimeModel(CamelModel):
     regime: Literal["NORMAL", "DEFENSIVE"]
     indexSymbol: str = "TAIEX"
@@ -26,6 +48,7 @@ class RegimeModel(CamelModel):
     drawdown20dPct: Optional[float] = None
     annualizedVol20dPct: Optional[float] = None
     reasons: list[str] = Field(default_factory=list)
+    usMacro: Optional[UsMacroModel] = None
 
 
 class PiotroskiChecksModel(CamelModel):
@@ -292,12 +315,26 @@ class HealthChartSeriesModel(CamelModel):
     valuationBand: HealthValuationBandSummaryModel
 
 
+class HealthUsMacroContextModel(CamelModel):
+    isTechRelated: bool = False
+    soxxClose: Optional[float] = None
+    soxxMa200: Optional[float] = None
+    soxxReturn20dPct: Optional[float] = None
+    soxxBelowMa200: Optional[bool] = None
+    soxxStatusLabel: Optional[str] = None
+    soxxWarning: Optional[str] = None
+    tnxYieldPct: Optional[float] = None
+    fcfBenchmarkPct: Optional[float] = None
+    asOfDate: Optional[str] = None
+
+
 class HealthReportModel(CamelModel):
     executiveSummary: HealthExecutiveSummaryModel
     safetyCheckup: list[HealthSafetyItemModel] = Field(default_factory=list)
     dimensions: list[HealthDimensionModel] = Field(default_factory=list)
     actionPlan: HealthActionPlanModel
     chartSeries: HealthChartSeriesModel
+    usMacroContext: Optional[HealthUsMacroContextModel] = None
 
 
 class TwStockSnapshot(CamelModel):

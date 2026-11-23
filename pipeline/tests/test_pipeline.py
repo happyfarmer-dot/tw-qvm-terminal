@@ -158,17 +158,32 @@ async def test_pipeline_quota_guard_and_incremental_cache(tmp_path: Path) -> Non
 
     # Mock TWSE / TPEx OpenAPI
     respx.get(TWSE_COMPANY_INFO_URL).mock(
-        return_value=httpx.Response(200, json=[{"公司代號": "2330", "公司簡稱": "台積電", "產業別": "半導體業"}])
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"公司代號": "2330", "公司簡稱": "台積電", "產業別": "半導體業"},
+                {"公司代號": "2886", "公司簡稱": "兆豐金", "產業別": "金融保險業"},
+            ],
+        )
     )
     respx.get(TPEX_COMPANY_INFO_URL).mock(return_value=httpx.Response(200, json=[]))
     respx.get(TWSE_STOCK_DAY_ALL_URL).mock(
         return_value=httpx.Response(
             200,
-            json=[{"Code": "2330", "Date": "1151120", "ClosingPrice": "1065", "TradeVolume": "30000000", "TradeValue": "31950000000"}],
+            json=[
+                {"Code": "2330", "Date": "1151120", "ClosingPrice": "1065", "TradeVolume": "30000000", "TradeValue": "31950000000"},
+                {"Code": "2886", "Date": "1151120", "ClosingPrice": "40", "TradeVolume": "15000000", "TradeValue": "600000000"},
+            ],
         )
     )
     respx.get(TWSE_VALUATION_URL).mock(
-        return_value=httpx.Response(200, json=[{"Code": "2330", "PEratio": "22.5", "PBratio": "6.8", "DividendYield": "1.6"}])
+        return_value=httpx.Response(
+            200,
+            json=[
+                {"Code": "2330", "PEratio": "22.5", "PBratio": "6.8", "DividendYield": "1.6"},
+                {"Code": "2886", "PEratio": "15.0", "PBratio": "1.5", "DividendYield": "4.2"},
+            ],
+        )
     )
     respx.get(TPEX_DAILY_QUOTES_URL).mock(return_value=httpx.Response(200, json=[]))
     respx.get(TWSE_DIRECTOR_PLEDGE_URL).mock(
@@ -544,6 +559,190 @@ def test_5y_pe_river_and_short_term_overheat_pullback_filter() -> None:
     dump_str = report.model_dump_json()
     assert ">=" not in dump_str
     assert "<=" not in dump_str
+
+
+def test_us_macro_client_fetch_and_cache_fallback(tmp_path: Path):
+    import pandas as pd
+    from pipeline.providers.us_macro_client import UsMacroClient
+
+    def fake_fetcher(symbol: str, period: str = "1y") -> pd.DataFrame:
+        idx = pd.date_range("2025-01-01", periods=220, freq="B")
+        if symbol == "^GSPC":
+            closes = [5000.0 + i * 2.0 for i in range(220)]
+        elif symbol == "SOXX":
+            closes = [220.0 + i * 0.2 for i in range(220)]
+        elif symbol == "^VIX":
+            closes = [18.5 for _ in range(220)]
+        elif symbol == "^TNX":
+            closes = [4.25 for _ in range(220)]
+        else:
+            closes = [100.0 for _ in range(220)]
+        return pd.DataFrame({"Close": closes}, index=idx)
+
+    client = UsMacroClient(cache_dir=tmp_path, history_fetcher=fake_fetcher)
+    macro = client.fetch_us_macro()
+    assert macro["fromCache"] is False
+    assert macro["sp500"]["close"] > macro["sp500"]["ma200"]
+    assert macro["soxx"]["close"] > macro["soxx"]["ma200"]
+    assert macro["vixClose"] == 18.5
+    assert macro["tnxYieldPct"] == 4.25
+    assert (tmp_path / "us_macro.json").exists()
+
+    def failing_fetcher(symbol: str, period: str = "1y") -> pd.DataFrame:
+        raise RuntimeError("network down")
+
+    fallback_client = UsMacroClient(cache_dir=tmp_path, history_fetcher=failing_fetcher)
+    cached_macro = fallback_client.fetch_us_macro()
+    assert cached_macro["fromCache"] is True
+    assert cached_macro["vixClose"] == 18.5
+    assert cached_macro["tnxYieldPct"] == 4.25
+
+
+def test_dual_market_regime_and_soxx_tnx_health_report():
+    from pipeline.calculators.regime_detector import detect_taiex_regime
+    from pipeline.calculators.health_report_builder import build_stock_health_report
+    from pipeline.schemas import CyclicalMetricsModel, FinancialRatiosModel, StageZeroMetricsModel
+
+    # TAIEX 強勢在年線之上，但美股 S&P 500 跌破 200MA 且 VIX >= 25 -> 應觸發雙重防禦
+    tw_rows = [{"date": f"2025-01-{i+1:02d}", "close": 22000.0 + i * 10} for i in range(220)]
+    us_macro_defensive = {
+        "asOfDate": "2025-11-20",
+        "fromCache": False,
+        "sp500": {"close": 5100.0, "ma200": 5400.0, "belowMa200": True, "drawdown20dPct": 7.5, "return20dPct": -4.0},
+        "soxx": {"close": 200.0, "ma200": 225.0, "belowMa200": True, "drawdown20dPct": 9.0, "return20dPct": -6.5},
+        "vixClose": 26.8,
+        "tnxYieldPct": 4.5,
+    }
+    regime = detect_taiex_regime(tw_rows, us_macro=us_macro_defensive)
+    assert regime["regime"] == "DEFENSIVE"
+    assert regime["usMacro"]["vixClose"] == 26.8
+
+    # 測試科技股 SOXX 逆風提示與 TNX + 1.5% 動態 FCF 殖利率門檻
+    sz = StageZeroMetricsModel(
+        isManufacturing=True,
+        avgDailyTurnover20dTWD=2_000_000_000,
+        isDispositionStock=False,
+        directorPledgeRatio=2.0,
+        cumulative3yOCF=120_000_000_000,
+        consecutive2qArOrInvBloat=False,
+        beneishMScore=-2.5,
+        altmanZScore=5.0,
+    )
+    ratios = FinancialRatiosModel(
+        roic3yAvgPct=25.0,
+        gpaPct=35.0,
+        ocfToNi3yPct=120.0,
+        piotroskiRaw=8,
+        evToEbitda=11.0,
+        fcfYieldPct=5.2,  # 5.2% < 4.5% + 1.5% = 6.0%
+        trailingPe=18.0,
+        dividendYieldPct=2.0,
+        consecutive5yDividend=True,
+        mom12m1mSharpe=1.1,
+        rev3mCumYoYPct=18.0,
+        rev12mCumYoYPct=15.0,
+        trendVsMa200Pct=10.0,
+    )
+    report = build_stock_health_report(
+        sym="2330",
+        name="台積電",
+        sector="半導體業",
+        profile="standard",
+        report_date="2025-11-20",
+        price=1000.0,
+        high_20d=1030.0,
+        atr20=22.0,
+        ma20=990.0,
+        ma120=950.0,
+        ma200=900.0,
+        ret20d_pct=3.0,
+        rsi14=55.0,
+        pe_river_data=None,
+        sz=sz,
+        ratios=ratios,
+        cyc=CyclicalMetricsModel(),
+        fin_sec=None,
+        income_rows=[{"date": "2025-12-31", "type": "EPS", "value": 45.0}],
+        regime="DEFENSIVE",
+        us_macro=us_macro_defensive,
+    )
+    assert report.usMacroContext is not None
+    assert report.usMacroContext.isTechRelated is True
+    assert report.usMacroContext.soxxBelowMa200 is True
+    assert report.usMacroContext.soxxWarning is not None
+    assert "費半" in report.usMacroContext.soxxWarning
+    assert report.usMacroContext.fcfBenchmarkPct == 6.0
+
+
+def test_dynamic_market_funnel_filtering_and_priority():
+    from pipeline.market_funnel import build_dynamic_universe, is_common_tw_stock
+
+    assert is_common_tw_stock("2330") is True
+    assert is_common_tw_stock("0050") is False
+    assert is_common_tw_stock("2330A") is False
+    assert is_common_tw_stock("00878") is False
+
+    twse_tpex = TwseTpexClient()
+    twse_tpex._twse_day_all = {
+        "2330": {"symbol": "2330", "name": "台積電", "close": 1000.0, "trading_money": 30_000_000_000.0},
+        "0050": {"symbol": "0050", "name": "元大台灣50", "close": 190.0, "trading_money": 5_000_000_000.0},
+        "9999": {"symbol": "9999", "name": "低價水餃", "close": 12.0, "trading_money": 80_000_000.0},
+        "8888": {"symbol": "8888", "name": "冷門殭屍", "close": 50.0, "trading_money": 10_000_000.0},
+        "7777": {"symbol": "7777", "name": "處置地雷", "close": 80.0, "trading_money": 200_000_000.0},
+        "6666": {"symbol": "6666", "name": "高設質股", "close": 60.0, "trading_money": 150_000_000.0},
+        "5555": {"symbol": "5555", "name": "虧損科技", "close": 45.0, "trading_money": 120_000_000.0},
+        "2603": {"symbol": "2603", "name": "長榮", "close": 210.0, "trading_money": 8_000_000_000.0},
+        "2881": {"symbol": "2881", "name": "富邦金", "close": 90.0, "trading_money": 2_000_000_000.0},
+        "3008": {"symbol": "3008", "name": "大立光", "close": 2500.0, "trading_money": 900_000_000.0},
+    }
+    twse_tpex._tpex_quotes = {
+        "6488": {"symbol": "6488", "name": "環球晶", "close": 400.0, "trading_money": 700_000_000.0, "pe": 16.0, "pb": 3.0},
+    }
+    twse_tpex._twse_val = {
+        "2330": {"pe": 22.0, "pb": 5.5},
+        "7777": {"pe": 15.0, "pb": 2.0},
+        "6666": {"pe": 12.0, "pb": 1.5},
+        "5555": {"pe": -10.0, "pb": 2.0},  # standard 虧損應排除
+        "2603": {"pe": 0.0, "pb": 1.2},    # 航運景氣循環保留
+        "2881": {"pe": None, "pb": 1.4},   # 金融保險保留
+        "3008": {"pe": 18.0, "pb": 2.2},
+    }
+    twse_tpex._twse_info = {
+        "2330": {"name": "台積電", "sector": "半導體業", "marketType": "twse"},
+        "7777": {"name": "處置地雷", "sector": "電子零組件業", "marketType": "twse"},
+        "6666": {"name": "高設質股", "sector": "光電業", "marketType": "twse"},
+        "5555": {"name": "虧損科技", "sector": "電子零組件業", "marketType": "twse"},
+        "2603": {"name": "長榮", "sector": "航運業", "marketType": "twse"},
+        "2881": {"name": "富邦金", "sector": "金融保險業", "marketType": "twse"},
+        "3008": {"name": "大立光", "sector": "光電業", "marketType": "twse"},
+    }
+    twse_tpex._tpex_info = {
+        "6488": {"name": "環球晶", "sector": "半導體業", "marketType": "tpex"},
+    }
+    twse_tpex._twse_punish = {"7777"}
+    twse_tpex._twse_punish_loaded = True
+    twse_tpex._twse_pledge = {
+        "6666": {"effectivePledgeRatioPct": 75.0},
+        "2330": {"effectivePledgeRatioPct": 0.0},
+    }
+
+    universe, stats = build_dynamic_universe(
+        twse_tpex=twse_tpex,
+        custom_watchlist=["3008"],
+        cached_symbols={"2881"},
+        max_funnel_size=500,
+    )
+    # 0050(ETF), 9999(<15元), 8888(<5000萬), 7777(處置), 6666(設質>=70%), 5555(一般股虧損) 全被排除
+    assert "0050" not in universe
+    assert "9999" not in universe
+    assert "8888" not in universe
+    assert "7777" not in universe
+    assert "6666" not in universe
+    assert "5555" not in universe
+    # 3008 (custom_watchlist) 應在最前面，其餘依成交金額由高到低排序
+    assert universe == ["3008", "2330", "2603", "2881", "6488"]
+    assert stats["selectedCount"] == 5
+
 
 
 

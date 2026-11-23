@@ -389,12 +389,48 @@ export interface HealthChartSeries {
   valuationBand: HealthValuationBandSummary;
 }
 
+export interface UsIndexStats {
+  close: number | null;
+  ma200: number | null;
+  belowMa200: boolean | null;
+  drawdown20dPct: number | null;
+  return20dPct: number | null;
+  date: string | null;
+}
+
+export interface UsMacroData {
+  asOfDate: string | null;
+  fetchedAtTaipei: string | null;
+  fromCache: boolean;
+  sp500: UsIndexStats;
+  soxx: UsIndexStats;
+  vixClose: number | null;
+  vixDate: string | null;
+  tnxYieldPct: number | null;
+  tnxDate: string | null;
+  statusNote: string | null;
+}
+
+export interface HealthUsMacroContext {
+  isTechRelated: boolean;
+  soxxClose: number | null;
+  soxxMa200: number | null;
+  soxxReturn20dPct: number | null;
+  soxxBelowMa200: boolean | null;
+  soxxStatusLabel: string | null;
+  soxxWarning: string | null;
+  tnxYieldPct: number | null;
+  fcfBenchmarkPct: number | null;
+  asOfDate: string | null;
+}
+
 export interface HealthReport {
   executiveSummary: HealthExecutiveSummary;
   safetyCheckup: HealthSafetyItem[];
   dimensions: HealthDimension[];
   actionPlan: HealthActionPlan;
   chartSeries: HealthChartSeries;
+  usMacroContext?: HealthUsMacroContext | null;
 }
 
 export interface TwStockCandidate {

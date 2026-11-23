@@ -254,6 +254,18 @@ class TwseTpexClient:
             yld = _to_float(row.get("DividendYield") or row.get("殖利率(%)"))
             close = _to_float(row.get("Close") or row.get("收盤")) if market_type == "tpex" else None
             volume = _to_float(row.get("TradingShares") or row.get("成交股數")) if market_type == "tpex" else None
+            trading_money = (
+                _to_float(
+                    row.get("TradingAmount")
+                    or row.get("Turnover")
+                    or row.get("成交金額(元)")
+                    or row.get("成交金額")
+                )
+                if market_type == "tpex"
+                else None
+            )
+            if trading_money is None and close is not None and volume is not None and close > 0 and volume > 0:
+                trading_money = round(close * volume, 2)
             iso_date = roc_to_iso(_get_first_str(row, ["Date", "資料日期"])) if market_type == "tpex" else None
             indexed[sym] = {
                 "pe": pe,
@@ -264,6 +276,7 @@ class TwseTpexClient:
                 "high": _to_float(row.get("High") or row.get("最高")) if market_type == "tpex" else None,
                 "low": _to_float(row.get("Low") or row.get("最低")) if market_type == "tpex" else None,
                 "volume": volume,
+                "trading_money": trading_money,
                 "date": iso_date,
             }
         return indexed
