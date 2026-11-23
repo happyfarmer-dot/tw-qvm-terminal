@@ -1,26 +1,26 @@
 {
-  "asOfDate": "2026-11-20",
-  "fetchedAtTaipei": "2026-11-23 21:02",
+  "asOfDate": "2026-11-23",
+  "fetchedAtTaipei": "2026-11-23 22:55",
   "fromCache": false,
   "sp500": {
-    "close": 6910.39,
-    "ma200": 7348.58,
+    "close": 7216.85,
+    "ma200": 7350.0,
     "belowMa200": true,
     "drawdown20dPct": 10.76,
-    "return20dPct": -9.36,
-    "date": "2026-11-20"
+    "return20dPct": -5.99,
+    "date": "2026-11-23"
   },
   "soxx": {
-    "close": 123.4,
-    "ma200": 160.97,
+    "close": 138.27,
+    "ma200": 161.08,
     "belowMa200": true,
     "drawdown20dPct": null,
-    "return20dPct": -22.58,
-    "date": "2026-11-20"
+    "return20dPct": -15.66,
+    "date": "2026-11-23"
   },
-  "vixClose": 31.83,
+  "vixClose": 29.68,
   "vixDate": "2026-11-23",
-  "tnxYieldPct": 4.91,
-  "tnxDate": "2026-11-20",
-  "statusNote": "已同步美股最新收盤數據（基準日：2026-11-20）"
+  "tnxYieldPct": 4.96,
+  "tnxDate": "2026-11-23",
+  "statusNote": "已同步美股最新收盤數據（基準日：2026-11-23）"
 }

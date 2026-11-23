@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "partial",
-  "updatedAtTaipei": "2026-11-23 21:00",
-  "updatedAtUtc": "2026-11-23T13:00:05.718283+00:00",
+  "updatedAtTaipei": "2026-11-23 22:54",
+  "updatedAtUtc": "2026-11-23T14:54:33.979352+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -11,45 +11,45 @@
     "drawdown20dPct": 23.39,
     "annualizedVol20dPct": 50.39,
     "reasons": [
-      "美股 S&P 500 (6,910) 低於 200MA (7,349)",
-      "美股恐慌指數 VIX 達 31.8（≥ 25 警戒線）",
+      "美股 S&P 500 (7,217) 低於 200MA (7,350)",
+      "美股恐慌指數 VIX 達 29.7（≥ 25 警戒線）",
       "加權指數 (36,812) 低於 200MA (41,555)",
       "近 20 日最大回撤 23.39% (> 10%)",
       "近 20 日年化波動率 50.39% (> 25%)"
     ],
     "usMacro": {
-      "asOfDate": "2026-11-20",
-      "fetchedAtTaipei": "2026-11-23 21:02",
+      "asOfDate": "2026-11-23",
+      "fetchedAtTaipei": "2026-11-23 22:55",
       "fromCache": false,
       "sp500": {
-        "close": 6910.39,
-        "ma200": 7348.58,
+        "close": 7216.85,
+        "ma200": 7350.0,
         "belowMa200": true,
         "drawdown20dPct": 10.76,
-        "return20dPct": -9.36,
-        "date": "2026-11-20"
+        "return20dPct": -5.99,
+        "date": "2026-11-23"
       },
       "soxx": {
-        "close": 123.4,
-        "ma200": 160.97,
+        "close": 138.27,
+        "ma200": 161.08,
         "belowMa200": true,
         "drawdown20dPct": null,
-        "return20dPct": -22.58,
-        "date": "2026-11-20"
+        "return20dPct": -15.66,
+        "date": "2026-11-23"
       },
-      "vixClose": 31.83,
+      "vixClose": 29.68,
       "vixDate": "2026-11-23",
-      "tnxYieldPct": 4.91,
-      "tnxDate": "2026-11-20",
-      "statusNote": "已同步美股最新收盤數據（基準日：2026-11-20）"
+      "tnxYieldPct": 4.96,
+      "tnxDate": "2026-11-23",
+      "statusNote": "已同步美股最新收盤數據（基準日：2026-11-23）"
     }
   },
   "stats": {
     "totalWatchlist": 360,
-    "successCount": 163,
+    "successCount": 188,
     "failedCount": 0,
-    "skippedDueToQuota": 197,
-    "cacheHits": 138,
+    "skippedDueToQuota": 172,
+    "cacheHits": 163,
     "finmindFetched": 25,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
