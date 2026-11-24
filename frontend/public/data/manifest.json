@@ -1,25 +1,25 @@
 {
   "version": 1,
   "status": "partial",
-  "updatedAtTaipei": "2026-11-24 12:57",
-  "updatedAtUtc": "2026-11-24T04:57:43.020615+00:00",
+  "updatedAtTaipei": "2026-11-24 14:59",
+  "updatedAtUtc": "2026-11-24T06:59:57.666957+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
-    "indexClose": 36811.89,
-    "ma200": 41555.17,
+    "indexClose": 40122.35,
+    "ma200": 41597.05,
     "drawdown20dPct": 23.39,
-    "annualizedVol20dPct": 50.39,
+    "annualizedVol20dPct": 61.73,
     "reasons": [
       "美股 S&P 500 (7,237) 低於 200MA (7,350)",
       "美股恐慌指數 VIX 達 26.6（≥ 25 警戒線）",
-      "加權指數 (36,812) 低於 200MA (41,555)",
+      "加權指數 (40,122) 低於 200MA (41,597)",
       "近 20 日最大回撤 23.39% (> 10%)",
-      "近 20 日年化波動率 50.39% (> 25%)"
+      "近 20 日年化波動率 61.73% (> 25%)"
     ],
     "usMacro": {
       "asOfDate": "2026-11-23",
-      "fetchedAtTaipei": "2026-11-24 12:58",
+      "fetchedAtTaipei": "2026-11-24 15:07",
       "fromCache": false,
       "sp500": {
         "close": 7237.17,
@@ -45,11 +45,11 @@
     }
   },
   "stats": {
-    "totalWatchlist": 321,
-    "successCount": 284,
+    "totalWatchlist": 337,
+    "successCount": 323,
     "failedCount": 0,
-    "skippedDueToQuota": 37,
-    "cacheHits": 259,
+    "skippedDueToQuota": 14,
+    "cacheHits": 298,
     "finmindFetched": 25,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
