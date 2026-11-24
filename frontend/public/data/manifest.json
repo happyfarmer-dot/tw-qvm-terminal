@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-25 04:45",
-  "updatedAtUtc": "2026-11-24T20:45:55.053420+00:00",
+  "updatedAtTaipei": "2026-11-25 06:50",
+  "updatedAtUtc": "2026-11-24T22:50:18.725372+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -11,33 +11,33 @@
     "drawdown20dPct": 23.39,
     "annualizedVol20dPct": 61.73,
     "reasons": [
-      "美股 S&P 500 (7,186) 低於 200MA (7,351)",
-      "美股恐慌指數 VIX 達 27.0（≥ 25 警戒線）",
+      "美股 S&P 500 (7,201) 低於 200MA (7,351)",
+      "美股恐慌指數 VIX 達 26.4（≥ 25 警戒線）",
       "加權指數 (40,122) 低於 200MA (41,597)",
       "近 20 日最大回撤 23.39% (> 10%)",
       "近 20 日年化波動率 61.73% (> 25%)"
     ],
     "usMacro": {
       "asOfDate": "2026-11-24",
-      "fetchedAtTaipei": "2026-11-25 04:46",
+      "fetchedAtTaipei": "2026-11-25 06:50",
       "fromCache": false,
       "sp500": {
-        "close": 7185.98,
-        "ma200": 7351.21,
+        "close": 7201.09,
+        "ma200": 7351.29,
         "belowMa200": true,
         "drawdown20dPct": 10.76,
-        "return20dPct": -6.95,
+        "return20dPct": -6.75,
         "date": "2026-11-24"
       },
       "soxx": {
-        "close": 128.66,
+        "close": 128.62,
         "ma200": 161.15,
         "belowMa200": true,
         "drawdown20dPct": null,
-        "return20dPct": -24.47,
+        "return20dPct": -24.5,
         "date": "2026-11-24"
       },
-      "vixClose": 27.0,
+      "vixClose": 26.36,
       "vixDate": "2026-11-24",
       "tnxYieldPct": 4.9,
       "tnxDate": "2026-11-24",
@@ -45,12 +45,12 @@
     }
   },
   "stats": {
-    "totalWatchlist": 329,
-    "successCount": 329,
+    "totalWatchlist": 246,
+    "successCount": 246,
     "failedCount": 0,
     "skippedDueToQuota": 0,
-    "cacheHits": 329,
-    "finmindFetched": 0,
+    "cacheHits": 234,
+    "finmindFetched": 12,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
     "finmindQuotaLimit": null
