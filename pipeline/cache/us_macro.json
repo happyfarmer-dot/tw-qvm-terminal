@@ -1,6 +1,6 @@
 {
   "asOfDate": "2026-11-23",
-  "fetchedAtTaipei": "2026-11-24 15:07",
+  "fetchedAtTaipei": "2026-11-24 16:56",
   "fromCache": false,
   "sp500": {
     "close": 7237.17,
@@ -18,8 +18,8 @@
     "return20dPct": -14.47,
     "date": "2026-11-23"
   },
-  "vixClose": 26.62,
-  "vixDate": "2026-11-23",
+  "vixClose": 26.73,
+  "vixDate": "2026-11-24",
   "tnxYieldPct": 4.92,
   "tnxDate": "2026-11-23",
   "statusNote": "已同步美股最新收盤數據（基準日：2026-11-23）"
