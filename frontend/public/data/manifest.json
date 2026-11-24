@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "partial",
-  "updatedAtTaipei": "2026-11-24 08:52",
-  "updatedAtUtc": "2026-11-24T00:52:32.741466+00:00",
+  "updatedAtTaipei": "2026-11-24 10:49",
+  "updatedAtUtc": "2026-11-24T02:49:14.148258+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -19,7 +19,7 @@
     ],
     "usMacro": {
       "asOfDate": "2026-11-23",
-      "fetchedAtTaipei": "2026-11-24 08:53",
+      "fetchedAtTaipei": "2026-11-24 10:49",
       "fromCache": false,
       "sp500": {
         "close": 7237.17,
@@ -46,10 +46,10 @@
   },
   "stats": {
     "totalWatchlist": 337,
-    "successCount": 248,
+    "successCount": 273,
     "failedCount": 0,
-    "skippedDueToQuota": 89,
-    "cacheHits": 223,
+    "skippedDueToQuota": 64,
+    "cacheHits": 248,
     "finmindFetched": 25,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
