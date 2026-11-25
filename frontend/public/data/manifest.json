@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-25 15:03",
-  "updatedAtUtc": "2026-11-25T07:03:42.520448+00:00",
+  "updatedAtTaipei": "2026-11-25 16:57",
+  "updatedAtUtc": "2026-11-25T08:57:17.459595+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -12,14 +12,14 @@
     "annualizedVol20dPct": 62.59,
     "reasons": [
       "美股 S&P 500 (7,201) 低於 200MA (7,351)",
-      "美股恐慌指數 VIX 達 26.4（≥ 25 警戒線）",
+      "美股恐慌指數 VIX 達 27.7（≥ 25 警戒線）",
       "加權指數 (38,195) 低於 200MA (41,628)",
       "近 20 日最大回撤 22.29% (> 10%)",
       "近 20 日年化波動率 62.59% (> 25%)"
     ],
     "usMacro": {
       "asOfDate": "2026-11-24",
-      "fetchedAtTaipei": "2026-11-25 15:05",
+      "fetchedAtTaipei": "2026-11-25 16:57",
       "fromCache": false,
       "sp500": {
         "close": 7201.09,
@@ -37,20 +37,20 @@
         "return20dPct": -24.5,
         "date": "2026-11-24"
       },
-      "vixClose": 26.36,
-      "vixDate": "2026-11-24",
+      "vixClose": 27.71,
+      "vixDate": "2026-11-25",
       "tnxYieldPct": 4.9,
       "tnxDate": "2026-11-24",
       "statusNote": "已同步美股最新收盤數據（基準日：2026-11-24）"
     }
   },
   "stats": {
-    "totalWatchlist": 246,
-    "successCount": 246,
+    "totalWatchlist": 251,
+    "successCount": 251,
     "failedCount": 0,
     "skippedDueToQuota": 0,
-    "cacheHits": 246,
-    "finmindFetched": 0,
+    "cacheHits": 249,
+    "finmindFetched": 2,
     "failedSymbols": [],
     "finmindQuotaRemaining": null,
     "finmindQuotaLimit": null
