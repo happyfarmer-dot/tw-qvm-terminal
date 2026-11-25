@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-26 02:43",
-  "updatedAtUtc": "2026-11-25T18:43:20.528612+00:00",
+  "updatedAtTaipei": "2026-11-26 04:48",
+  "updatedAtUtc": "2026-11-25T20:48:13.702932+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -11,7 +11,7 @@
     "drawdown20dPct": 22.29,
     "annualizedVol20dPct": 62.59,
     "reasons": [
-      "美股 S&P 500 (7,168) 低於 200MA (7,352)",
+      "美股 S&P 500 (7,176) 低於 200MA (7,352)",
       "美股恐慌指數 VIX 達 28.5（≥ 25 警戒線）",
       "加權指數 (38,195) 低於 200MA (41,628)",
       "近 20 日最大回撤 22.29% (> 10%)",
@@ -19,27 +19,27 @@
     ],
     "usMacro": {
       "asOfDate": "2026-11-25",
-      "fetchedAtTaipei": "2026-11-26 02:43",
+      "fetchedAtTaipei": "2026-11-26 04:48",
       "fromCache": false,
       "sp500": {
-        "close": 7168.05,
-        "ma200": 7352.42,
+        "close": 7175.97,
+        "ma200": 7352.46,
         "belowMa200": true,
         "drawdown20dPct": 10.49,
-        "return20dPct": -7.44,
+        "return20dPct": -7.33,
         "date": "2026-11-25"
       },
       "soxx": {
-        "close": 125.32,
+        "close": 126.26,
         "ma200": 161.19,
         "belowMa200": true,
         "drawdown20dPct": null,
-        "return20dPct": -27.97,
+        "return20dPct": -27.43,
         "date": "2026-11-25"
       },
-      "vixClose": 28.47,
+      "vixClose": 28.49,
       "vixDate": "2026-11-25",
-      "tnxYieldPct": 4.83,
+      "tnxYieldPct": 4.85,
       "tnxDate": "2026-11-25",
       "statusNote": "已同步美股最新收盤數據（基準日：2026-11-25）"
     }
