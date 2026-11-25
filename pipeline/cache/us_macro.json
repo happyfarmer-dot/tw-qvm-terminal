@@ -1,24 +1,24 @@
 {
   "asOfDate": "2026-11-25",
-  "fetchedAtTaipei": "2026-11-26 04:48",
+  "fetchedAtTaipei": "2026-11-26 06:47",
   "fromCache": false,
   "sp500": {
-    "close": 7175.97,
-    "ma200": 7352.46,
+    "close": 7182.78,
+    "ma200": 7352.49,
     "belowMa200": true,
     "drawdown20dPct": 10.49,
-    "return20dPct": -7.33,
+    "return20dPct": -7.25,
     "date": "2026-11-25"
   },
   "soxx": {
-    "close": 126.26,
-    "ma200": 161.19,
+    "close": 127.98,
+    "ma200": 161.2,
     "belowMa200": true,
     "drawdown20dPct": null,
-    "return20dPct": -27.43,
+    "return20dPct": -26.44,
     "date": "2026-11-25"
   },
-  "vixClose": 28.49,
+  "vixClose": 28.29,
   "vixDate": "2026-11-25",
   "tnxYieldPct": 4.85,
   "tnxDate": "2026-11-25",
