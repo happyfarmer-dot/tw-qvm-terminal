@@ -1,6 +1,6 @@
 {
   "asOfDate": "2026-11-25",
-  "fetchedAtTaipei": "2026-11-27 16:56",
+  "fetchedAtTaipei": "2026-11-27 18:49",
   "fromCache": false,
   "sp500": {
     "close": 7182.78,
@@ -18,7 +18,7 @@
     "return20dPct": -26.44,
     "date": "2026-11-25"
   },
-  "vixClose": 24.76,
+  "vixClose": 24.62,
   "vixDate": "2026-11-27",
   "tnxYieldPct": 4.85,
   "tnxDate": "2026-11-25",

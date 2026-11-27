@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-27 16:56",
-  "updatedAtUtc": "2026-11-27T08:56:07.217324+00:00",
+  "updatedAtTaipei": "2026-11-27 18:49",
+  "updatedAtUtc": "2026-11-27T10:49:39.283592+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -18,7 +18,7 @@
     ],
     "usMacro": {
       "asOfDate": "2026-11-25",
-      "fetchedAtTaipei": "2026-11-27 16:56",
+      "fetchedAtTaipei": "2026-11-27 18:49",
       "fromCache": false,
       "sp500": {
         "close": 7182.78,
@@ -36,7 +36,7 @@
         "return20dPct": -26.44,
         "date": "2026-11-25"
       },
-      "vixClose": 24.76,
+      "vixClose": 24.62,
       "vixDate": "2026-11-27",
       "tnxYieldPct": 4.85,
       "tnxDate": "2026-11-25",
