@@ -1,8 +1,8 @@
 {
   "version": 1,
   "status": "ready",
-  "updatedAtTaipei": "2026-11-28 18:45",
-  "updatedAtUtc": "2026-11-28T10:45:06.094853+00:00",
+  "updatedAtTaipei": "2026-11-28 20:49",
+  "updatedAtUtc": "2026-11-28T12:49:38.617337+00:00",
   "regime": {
     "regime": "DEFENSIVE",
     "indexSymbol": "TAIEX",
@@ -18,7 +18,7 @@
     ],
     "usMacro": {
       "asOfDate": "2026-11-27",
-      "fetchedAtTaipei": "2026-11-28 18:45",
+      "fetchedAtTaipei": "2026-11-28 20:49",
       "fromCache": false,
       "sp500": {
         "close": 7297.49,
